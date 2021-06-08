@@ -1,8 +1,8 @@
 #ifndef VK_MODELS_H
 #define VK_MODELS_H
 
-#include <vector>
 #include <unordered_map>
+#include <vector>
 
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
@@ -57,7 +57,7 @@ struct Model
 					attrib.vertices[3 * shapes[i].mesh.indices[j].vertex_index + 1],
 					attrib.vertices[3 * shapes[i].mesh.indices[j].vertex_index + 2],
 				}; // * by 3 since the vertices are in an array of floats
-				vertex.colour = glm::vec3(1.0f, 1.0f, 1.0f);
+				vertex.colour	= glm::vec3(1.0f, 1.0f, 1.0f);
 				vertex.texcoord = {
 					attrib.texcoords[2 * shapes[i].mesh.indices[j].texcoord_index],
 					1.0f - attrib.texcoords[2 * shapes[i].mesh.indices[j].texcoord_index + 1],
@@ -70,7 +70,6 @@ struct Model
 				}
 
 				indices.push_back(unique_vertices[vertex]);
-
 			}
 		}
 	}

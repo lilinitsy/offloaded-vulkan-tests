@@ -49,6 +49,15 @@ void transition_image_layout(VulkanDevice device, VkCommandPool command_pool, Vk
 	end_command_buffer(device, command_pool, command_buffer);
 }
 
+void transition_image_layout(VulkanDevice device, VkCommandPool command_pool, VkCommandBuffer command_buffer, VkImage image, VkAccessFlags src_access_mask, VkAccessFlags dst_access_mask, VkImageLayout old_layout, VkImageLayout new_layout, VkPipelineStageFlags src_stage_mask, VkPipelineStageFlags dst_stage_mask)
+{
+	VkImageSubresourceRange subresource_range = vki::imageSubresourceRange(VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1);
+	VkImageMemoryBarrier barrier			  = vki::imageMemoryBarrier(src_access_mask, dst_access_mask, old_layout, new_layout, VK_QUEUE_FAMILY_IGNORED, VK_QUEUE_FAMILY_IGNORED, image, subresource_range);
+
+	// the pipeline stage to submit, pipeline stage to wait on
+	vkCmdPipelineBarrier(command_buffer, src_stage_mask, dst_stage_mask, 0, 0, nullptr, 0, nullptr, 1, &barrier);
+}
+
 
 void create_image(VulkanDevice device, VkImageCreateFlags flags, VkImageType image_type, VkFormat format, VkExtent3D extent, uint32_t mip_levels, uint32_t array_layers, VkSampleCountFlagBits samples, VkImageTiling tiling, VkImageUsageFlags usage, VkSharingMode sharing_mode, VkImageLayout initial_layout, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &image_memory)
 {

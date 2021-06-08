@@ -5,8 +5,8 @@
 #include <vector>
 
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/gtx/hash.hpp>
 #include <glm/glm.hpp>
+#include <glm/gtx/hash.hpp>
 #include <vulkan/vulkan.h>
 
 #include "vk_buffers.h"
@@ -44,21 +44,27 @@ struct Vertex
 		return attributes;
 	}
 
-	bool operator==(const Vertex &v) const {
-        return position == v.position && colour == v.colour && texcoord == v.texcoord;
-    }
+	bool operator==(const Vertex &v) const
+	{
+		return position == v.position && colour == v.colour && texcoord == v.texcoord;
+	}
 };
 
 // Bullshit for map
-namespace std {
-    template<> struct hash<Vertex> {
-        size_t operator()(Vertex const& vertex) const {
-            return ((hash<glm::vec3>()(vertex.position) ^
-                   (hash<glm::vec3>()(vertex.colour) << 1)) >> 1) ^
-                   (hash<glm::vec2>()(vertex.texcoord) << 1);
-        }
-    };
-}
+namespace std
+{
+	template<>
+	struct hash<Vertex>
+	{
+		size_t operator()(Vertex const &vertex) const
+		{
+			return ((hash<glm::vec3>()(vertex.position) ^
+					 (hash<glm::vec3>()(vertex.colour) << 1)) >>
+					1) ^
+				   (hash<glm::vec2>()(vertex.texcoord) << 1);
+		}
+	};
+} // namespace std
 
 
 void initialize_vertex_buffers(VulkanDevice device, std::vector<Vertex> vertices, VkBuffer *vbo, VkDeviceMemory *vbo_mem, VkCommandPool command_pool)
