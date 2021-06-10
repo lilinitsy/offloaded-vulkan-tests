@@ -43,9 +43,10 @@ struct ImagePacket
 {
 	VkImage image;
 	VkDeviceMemory memory;
+	VkSubresourceLayout subresource_layout;
 	char *data;
 
-	void map_memory(VulkanDevice device, VkSubresourceLayout subresource_layout)
+	void map_memory(VulkanDevice device)
 	{
 		vkMapMemory(device.logical_device, memory, 0, VK_WHOLE_SIZE, 0, (void **) &data);
 		data += subresource_layout.offset;
@@ -144,14 +145,13 @@ struct Renderer
 		setup_command_buffers();
 		setup_vk_async();
 	}
-	uint8_t framecount = 0;
+
 	void game_loop()
 	{
-		while(!glfwWindowShouldClose(window) && framecount < 10)
+		while(!glfwWindowShouldClose(window))
 		{
 			glfwPollEvents();
 			render_complete_frame();
-			framecount++;
 		}
 
 		vkDeviceWaitIdle(device.logical_device);
@@ -666,7 +666,34 @@ struct Renderer
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
 		ImagePacket image_packet = copy_image();
+
+		
+		// Debugging: write to ppm
+		/*{
+			std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+			file << "P6\n"
+				<< WIDTH << "\n"
+				<< HEIGHT << "\n"
+				<< 255 << "\n";
+
+			for(uint32_t y = 0; y < HEIGHT; y++)
+			{
+				uint32_t *row = (uint32_t *) image_packet.data;
+
+				for(uint32_t x = 0; x < WIDTH; x++)
+				{
+					file.write((char *) row, 3);
+					row++;
+				}
+
+				image_packet.data += image_packet.subresource_layout.rowPitch;
+			}
+
+			file.close();
+		}*/
+
 		image_packet.destroy(device);
+
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -705,7 +732,7 @@ struct Renderer
 
 
 		// Copy the image
-		VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources aren't working
+		VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources isn't working
 		image_copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		image_copy_region.srcSubresource.layerCount = 1;
 		image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -720,39 +747,17 @@ struct Renderer
 		// Transition dst image to general layout -- lets us map the image memory
 		transition_image_layout(device, command_pool, copy_cmdbuffer, dst.image, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
+
 		// transition to swapchain image now that copying is done
 		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		end_command_buffer(device, command_pool, copy_cmdbuffer);
 
 		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
-		VkSubresourceLayout subresource_layout;
-		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &subresource_layout);
+		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
 
-		dst.map_memory(device, subresource_layout);
-
-		/*
-		// Debugging: write to ppm
-		{
-			std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-			file << "P6\n" << WIDTH << "\n" << HEIGHT << "\n" << 255 << "\n";
-
-			for(uint32_t y = 0; y < HEIGHT; y++)
-			{
-				uint32_t *row = (uint32_t*) dst.data;
-
-				for(uint32_t x = 0; x < WIDTH; x++)
-				{
-					file.write((char*) row, 3);
-					row++;
-				}
-
-				dst.data += subresource_layout.rowPitch;
-			}
-
-			file.close();
-		}
-		*/
+		dst.map_memory(device);
+		
 
 
 		gettimeofday(&timer_end, nullptr);
