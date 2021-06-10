@@ -39,6 +39,27 @@ std::string MODEL_PATH	 = "../models/laurenscan/Model.obj";
 std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
 
+struct ImagePacket
+{
+	VkImage image;
+	VkDeviceMemory memory;
+	char *data;
+
+	void map_memory(VulkanDevice device, VkSubresourceLayout subresource_layout)
+	{
+		vkMapMemory(device.logical_device, memory, 0, VK_WHOLE_SIZE, 0, (void **) &data);
+		data += subresource_layout.offset;
+	}
+
+	void destroy(VulkanDevice device)
+	{
+		vkUnmapMemory(device.logical_device, memory);
+		vkFreeMemory(device.logical_device, memory, nullptr);
+		vkDestroyImage(device.logical_device, image, nullptr);
+	}
+};
+
+
 struct Renderer
 {
 	void run()
@@ -123,13 +144,14 @@ struct Renderer
 		setup_command_buffers();
 		setup_vk_async();
 	}
-
+	uint8_t framecount = 0;
 	void game_loop()
 	{
-		while(!glfwWindowShouldClose(window))
+		while(!glfwWindowShouldClose(window) && framecount < 10)
 		{
 			glfwPollEvents();
 			render_complete_frame();
+			framecount++;
 		}
 
 		vkDeviceWaitIdle(device.logical_device);
@@ -643,20 +665,21 @@ struct Renderer
 
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
-		//copy_image();
+		ImagePacket image_packet = copy_image();
+		image_packet.destroy(device);
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
 		gettimeofday(&timer_end, nullptr);
-	
-	
+
+
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
 		printf("frame dt: %f\n", (dt / 1000000.0f));
 	}
 
 
 	// Test function adapted from sasha's example screenshot
-	void copy_image()
+	ImagePacket copy_image()
 	{
 		timeval timer_start;
 		timeval timer_end;
@@ -667,61 +690,77 @@ struct Renderer
 		VkImage src_image			   = swapchain.images[current_frame];
 
 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
-		VkImage dst_image;
-		VkDeviceMemory dst_image_memory;
+		ImagePacket dst;
 		VkExtent3D extent = {WIDTH, HEIGHT, 1};
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst_image, dst_image_memory);
+		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
 
 		// Blit from the swapchain image to the copied image
 		//VkCommandBuffer copy_command = begin_command_buffer(device, command_pool);
 
 		// Transition dst image to destination layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer, dst_image, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+		transition_image_layout(device, command_pool, copy_cmdbuffer, dst.image, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		// Transition swapchain image from present to source's transfer layout
 		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-	
-		
+
+
 		// Copy the image
-		VkImageCopy image_copy_region = {}; // For some reason, using the vki functions on subresources isn't working
+		VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources aren't working
 		image_copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		image_copy_region.srcSubresource.layerCount = 1;
 		image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		image_copy_region.dstSubresource.layerCount = 1;
-		image_copy_region.extent.width = WIDTH;
-		image_copy_region.extent.height = HEIGHT;
-		image_copy_region.extent.depth = 1;
+		image_copy_region.extent.width				= WIDTH;
+		image_copy_region.extent.height				= HEIGHT;
+		image_copy_region.extent.depth				= 1;
 
-		vkCmdCopyImage(copy_cmdbuffer, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy_region);
+		vkCmdCopyImage(copy_cmdbuffer, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy_region);
 
-		
+
 		// Transition dst image to general layout -- lets us map the image memory
-		transition_image_layout(device, command_pool, copy_cmdbuffer, dst_image, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-		
-		
+		transition_image_layout(device, command_pool, copy_cmdbuffer, dst.image, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
 		// transition to swapchain image now that copying is done
 		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		end_command_buffer(device, command_pool, copy_cmdbuffer);
-		
+
 		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
 		VkSubresourceLayout subresource_layout;
-		vkGetImageSubresourceLayout(device.logical_device, dst_image, &subresource, &subresource_layout);
+		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &subresource_layout);
 
-		char *data;
-		vkMapMemory(device.logical_device, dst_image_memory, 0, VK_WHOLE_SIZE, 0, (void**) &data);
-		data += subresource_layout.offset;
+		dst.map_memory(device, subresource_layout);
 
-		vkUnmapMemory(device.logical_device, dst_image_memory);
-		vkFreeMemory(device.logical_device, dst_image_memory, nullptr);
-		vkDestroyImage(device.logical_device, dst_image, nullptr);
+		/*
+		// Debugging: write to ppm
+		{
+			std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+			file << "P6\n" << WIDTH << "\n" << HEIGHT << "\n" << 255 << "\n";
+
+			for(uint32_t y = 0; y < HEIGHT; y++)
+			{
+				uint32_t *row = (uint32_t*) dst.data;
+
+				for(uint32_t x = 0; x < WIDTH; x++)
+				{
+					file.write((char*) row, 3);
+					row++;
+				}
+
+				dst.data += subresource_layout.rowPitch;
+			}
+
+			file.close();
+		}
+		*/
+
 
 		gettimeofday(&timer_end, nullptr);
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
 		printf("dt: %f\n", (dt / 1000000.0f));
 
-
+		return dst;
 	}
 
 
