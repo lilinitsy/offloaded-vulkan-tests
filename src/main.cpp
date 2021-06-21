@@ -10,10 +10,15 @@
 #include <cstring>
 #include <fstream>
 #include <iostream>
+#include <netinet/in.h>
 #include <set>
 #include <stdexcept>
+#include <stdio.h>
+#include <sys/socket.h>
 #include <sys/time.h>
+#include <unistd.h>
 #include <vector>
+
 
 #define GLM_FORCE_RADIANS
 #define GLMFORCE_DEPTH_ZERO_TO_ONE
@@ -38,6 +43,8 @@
 std::string MODEL_PATH	 = "../models/laurenscan/Model.obj";
 std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
+#define PORT 1234
+
 
 struct ImagePacket
 {
@@ -59,6 +66,46 @@ struct ImagePacket
 		vkDestroyImage(device.logical_device, image, nullptr);
 	}
 };
+
+
+struct Server
+{
+	int socket_fd;
+	int client_fd;
+
+	Server()
+	{
+		// Create socket
+		socket_fd = socket(AF_INET, SOCK_STREAM, 0);
+		if(socket_fd == 0)
+		{
+			throw std::runtime_error("Socket creation failed");
+		}
+	}
+
+	void connect_to_client(int port)
+	{
+
+		// define the address struct to be for TCP using this port
+		sockaddr_in address = {
+			.sin_family = AF_INET,
+			.sin_port	= static_cast<in_port_t>(port),
+		};
+
+		// bind to socket
+		int binding = bind(socket_fd, (sockaddr *) &address, sizeof(address));
+		if(binding == -1)
+		{
+			throw std::runtime_error("Bind to socket failed");
+		}
+
+		// Listen for a client to connect
+		listen(socket_fd, 1);
+		// Accept a connection from a client
+		client_fd = accept(socket_fd, nullptr, nullptr);
+	}
+};
+
 
 
 struct Renderer
@@ -109,6 +156,8 @@ struct Renderer
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
 
+	Server server;
+
 	void initWindow()
 	{
 		glfwInit();
@@ -144,6 +193,9 @@ struct Renderer
 		setup_descriptor_sets();
 		setup_command_buffers();
 		setup_vk_async();
+
+		server = Server();
+		server.connect_to_client(PORT);
 	}
 
 	void game_loop()
@@ -665,9 +717,23 @@ struct Renderer
 
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
-		ImagePacket image_packet = copy_image();
+		ImagePacket image_packet = copy_swapchain_image();
 
-		
+		/*char clientbuf[1024];
+		int client_read = read(server.client_fd, clientbuf, 1024);
+		printf("Message from client: %s\n", clientbuf);*/
+
+		for(uint32_t i = 0; i < 1080; i++)
+		{
+			// Send scanline
+			send(server.client_fd, image_packet.data, 1920, 0);
+			image_packet.data += image_packet.subresource_layout.rowPitch;
+
+			// Receive code that line has been written
+			char code[1];
+			int client_read = read(server.client_fd, code, 1);
+		}
+
 		// Debugging: write to ppm
 		/*{
 			std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
@@ -706,7 +772,7 @@ struct Renderer
 
 
 	// Test function adapted from sasha's example screenshot
-	ImagePacket copy_image()
+	ImagePacket copy_swapchain_image()
 	{
 		timeval timer_start;
 		timeval timer_end;
@@ -757,7 +823,7 @@ struct Renderer
 		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
 
 		dst.map_memory(device);
-		
+
 
 
 		gettimeofday(&timer_end, nullptr);
