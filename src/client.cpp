@@ -53,7 +53,7 @@ int main()
 				printf("row: %c\n", rowchar[i]);
 			}
 
-			for(uint32_t x = 0; x < 1080; x++)
+			for(uint32_t x = 0; x < 1920; x++)
 			{
 				file.write((char *) row, 3);
 				row++;
@@ -69,7 +69,7 @@ int main()
 			printf("Nothing to read\n");
 		}
 
-		if(height == 1080)
+		if(height == 1920)
 		{
 			file.close();
 			printf("height = 1080\n");
