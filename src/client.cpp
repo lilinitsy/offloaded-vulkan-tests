@@ -55,7 +55,7 @@ int main()
 
 			for(uint32_t x = 0; x < 1920; x++)
 			{
-				file.write((char *) row, 3);
+				//file.write((char *) row, 3);
 				row++;
 			}
 
@@ -71,18 +71,11 @@ int main()
 
 		if(height == 1920)
 		{
-			file.close();
+			//file.close();
 			printf("height = 1080\n");
 			height = 0;
 		}
 	}
-
-	/*send(socket_fd, "fuck", 4, 0);
-	printf("msg sent\n");
 	
-	char servbuf[1024];
-	int server_read = read(socket_fd, servbuf, 1024);
-	printf("Message from server: %s\n", servbuf);*/
-
 	return 0;
 }

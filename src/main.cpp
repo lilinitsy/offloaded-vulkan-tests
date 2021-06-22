@@ -719,6 +719,10 @@ struct Renderer
 
 		ImagePacket image_packet = copy_swapchain_image();
 
+		timeval start_of_stream;
+		timeval end_of_stream;
+		gettimeofday(&start_of_stream, nullptr);
+
 		for(uint32_t i = 0; i < HEIGHT; i++)
 		{
 			// Send scanline
@@ -728,9 +732,14 @@ struct Renderer
 			// Receive code that line has been written
 			char code[8];
 			int client_read = read(server.client_fd, code, 8);
-			printf("%s\n", code);
+			//printf("%s\n", code);
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
+
+		gettimeofday(&end_of_stream, nullptr);
+
+		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
+		printf("Stream dt: %f\n", stream_dt / 1000000.0f);
 
 		// Debugging: write to ppm
 		/*{
