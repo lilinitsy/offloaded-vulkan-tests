@@ -723,15 +723,16 @@ struct Renderer
 		int client_read = read(server.client_fd, clientbuf, 1024);
 		printf("Message from client: %s\n", clientbuf);*/
 
-		for(uint32_t i = 0; i < 1080; i++)
+		for(uint32_t i = 0; i < HEIGHT; i++)
 		{
 			// Send scanline
-			send(server.client_fd, image_packet.data, 1920, 0);
-			image_packet.data += image_packet.subresource_layout.rowPitch;
+			send(server.client_fd, image_packet.data, 1920 * 3, 0);
 
 			// Receive code that line has been written
 			char code[1];
 			int client_read = read(server.client_fd, code, 1);
+			printf("Line written by client\n");
+			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
 
 		// Debugging: write to ppm
