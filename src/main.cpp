@@ -719,19 +719,16 @@ struct Renderer
 
 		ImagePacket image_packet = copy_swapchain_image();
 
-		/*char clientbuf[1024];
-		int client_read = read(server.client_fd, clientbuf, 1024);
-		printf("Message from client: %s\n", clientbuf);*/
-
 		for(uint32_t i = 0; i < HEIGHT; i++)
 		{
 			// Send scanline
-			send(server.client_fd, image_packet.data, 1920 * 3, 0);
+			uint32_t *row = (uint32_t *) image_packet.data;
+			send(server.client_fd, row, 1920 * 3, 0);
 
 			// Receive code that line has been written
-			char code[1];
-			int client_read = read(server.client_fd, code, 1);
-			printf("Line written by client\n");
+			char code[8];
+			int client_read = read(server.client_fd, code, 8);
+			printf("%s\n", code);
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
 

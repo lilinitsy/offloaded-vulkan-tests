@@ -29,7 +29,7 @@ int main()
 		throw std::runtime_error("Could not connect to server");
 	}
 
-	char servbuf[1920 * 3];
+	uint32_t servbuf[1920 * 3];
 
 	std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
 	file << "P6\n"
@@ -41,23 +41,17 @@ int main()
 
 	while(1)
 	{
-		
-		/*if(height == 0)
-		{
-			file.open("tmp.ppm", std::ios::out | std::ios::binary);
-			file << "P6\n"
-				 << 1920 << "\n"
-				 << 1080 << "\n"
-				 << 255 << "\n";
-		}*/
-
 		int server_read = read(socket_fd, servbuf, 1920 * 3);
 
-		// Debugging: write to ppm
+		if(server_read != -1)
 		{
+			uint32_t *row = servbuf;
+			char *rowchar = (char *) row;
 
-			uint32_t *row = (uint32_t *) servbuf;
-			printf("row: %s\n", (char*) row);
+			for(uint8_t i = 0; i < 3; i++)
+			{
+				printf("row: %c\n", rowchar[i]);
+			}
 
 			for(uint32_t x = 0; x < 1080; x++)
 			{
@@ -67,8 +61,12 @@ int main()
 
 			height++;
 
-			char write_packet[1];
-			write(socket_fd, write_packet, 1);
+			write(socket_fd, "linedone", 8);
+		}
+
+		else
+		{
+			printf("Nothing to read\n");
 		}
 
 		if(height == 1080)
