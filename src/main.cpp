@@ -108,7 +108,7 @@ struct Server
 
 
 
-struct Renderer
+struct HostRenderer
 {
 	void run()
 	{
@@ -860,8 +860,8 @@ struct Renderer
 
 int main()
 {
-	Renderer renderer;
-	renderer.run();
+	HostRenderer host_renderer;
+	host_renderer.run();
 
 	return 0;
 }
