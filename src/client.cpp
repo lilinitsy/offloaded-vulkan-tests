@@ -76,6 +76,6 @@ int main()
 			height = 0;
 		}
 	}
-	
+
 	return 0;
 }
