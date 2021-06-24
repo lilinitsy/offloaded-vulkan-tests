@@ -67,7 +67,7 @@ struct Client
 
 				for(uint32_t x = 0; x < 1920; x++)
 				{
-					file.write((char *) row, 3);
+					//file.write((char *) row, 3);
 					row++;
 				}
 
@@ -90,6 +90,19 @@ struct Client
 		}
 	}
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

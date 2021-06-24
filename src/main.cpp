@@ -48,7 +48,7 @@ std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
 struct ImagePacket
 {
-	VkImage image;
+	VkBuffer buffer;
 	VkDeviceMemory memory;
 	VkSubresourceLayout subresource_layout;
 	char *data;
@@ -63,7 +63,7 @@ struct ImagePacket
 	{
 		vkUnmapMemory(device.logical_device, memory);
 		vkFreeMemory(device.logical_device, memory, nullptr);
-		vkDestroyImage(device.logical_device, image, nullptr);
+		vkDestroyBuffer(device.logical_device, buffer, nullptr);
 	}
 };
 
@@ -723,7 +723,7 @@ struct HostRenderer
 		timeval end_of_stream;
 		gettimeofday(&start_of_stream, nullptr);
 
-		for(uint32_t i = 0; i < HEIGHT; i++)
+		/*for(uint32_t i = 0; i < HEIGHT; i++)
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
@@ -735,7 +735,7 @@ struct HostRenderer
 			//printf("%s\n", code);
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
-
+		*/
 		gettimeofday(&end_of_stream, nullptr);
 
 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
@@ -779,6 +779,12 @@ struct HostRenderer
 
 
 	// Test function adapted from sasha's example screenshot
+	/*
+		Possibly need to change this to:
+			- copy image to buffer
+			- stream buffer to device
+			- on device, copy buffer to image
+	*/
 	ImagePacket copy_swapchain_image()
 	{
 		timeval timer_start;
@@ -792,10 +798,36 @@ struct HostRenderer
 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
 		ImagePacket dst;
 		VkExtent3D extent = {WIDTH, HEIGHT, 1};
+
+		VkDeviceSize image_buffer_size = 1920 * 1080 * 4;
+		create_buffer(device, image_buffer_size, VK_BUFFER_USAGE_TRANSFER_DST_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, dst.buffer, dst.memory);
+
+		VkBufferImageCopy image_buffer_copy_region = {};
+		image_buffer_copy_region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		image_buffer_copy_region.imageSubresource.layerCount = 1;
+		image_buffer_copy_region.imageExtent.width = WIDTH;
+		image_buffer_copy_region.imageExtent.height = HEIGHT;
+		image_buffer_copy_region.imageExtent.depth = 1;
+		
+
+
+		// Transition swapchain image from present to source's transfer layout
+		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+		vkCmdCopyImageToBuffer(copy_cmdbuffer, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.buffer, 1, &image_buffer_copy_region);
+
+		// transition swapchain image back from source transfer to present
+		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+
+
+
+
+
+
+		/*
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
 
-		// Blit from the swapchain image to the copied image
-		//VkCommandBuffer copy_command = begin_command_buffer(device, command_pool);
 
 		// Transition dst image to destination layout
 		transition_image_layout(device, command_pool, copy_cmdbuffer, dst.image, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -823,11 +855,11 @@ struct HostRenderer
 
 		// transition to swapchain image now that copying is done
 		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
-
+		*/
 		end_command_buffer(device, command_pool, copy_cmdbuffer);
 
-		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
-		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
+		//VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
+		//vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
 
 		dst.map_memory(device);
 
