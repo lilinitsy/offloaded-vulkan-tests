@@ -723,7 +723,7 @@ struct HostRenderer
 		timeval end_of_stream;
 		gettimeofday(&start_of_stream, nullptr);
 
-		/*for(uint32_t i = 0; i < HEIGHT; i++)
+		for(uint32_t i = 0; i < HEIGHT; i++)
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
@@ -735,7 +735,7 @@ struct HostRenderer
 			//printf("%s\n", code);
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
-		*/
+
 		gettimeofday(&end_of_stream, nullptr);
 
 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
