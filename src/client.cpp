@@ -28,13 +28,14 @@ struct Client
 	{
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
-			.sin_port	= static_cast<in_port_t>(port),
+			.sin_port	= htons(static_cast<in_port_t>(port)),
 		};
 
+		// Comment out below line to run locally
 		server_address.sin_addr.s_addr = inet_addr("192.168.0.181");
 
 
-		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(server_address));
+		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(sockaddr_in));
 		if(connect_result == -1)
 		{
 			throw std::runtime_error("Could not connect to server");
