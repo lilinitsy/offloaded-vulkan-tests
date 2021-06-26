@@ -31,6 +31,8 @@ struct Client
 			.sin_port	= static_cast<in_port_t>(port),
 		};
 
+		server_address.sin_addr.s_addr = inet_addr("192.168.0.181");
+
 
 		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(server_address));
 		if(connect_result == -1)
