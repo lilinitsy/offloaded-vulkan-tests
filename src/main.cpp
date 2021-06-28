@@ -89,7 +89,7 @@ struct Server
 		// define the address struct to be for TCP using this port
 		sockaddr_in address = {
 			.sin_family = AF_INET,
-			.sin_port	= static_cast<in_port_t>(port),
+			.sin_port	= htons(static_cast<in_port_t>(port)),
 		};
 
 		// bind to socket
@@ -738,8 +738,8 @@ struct Renderer
 
 		gettimeofday(&end_of_stream, nullptr);
 
-		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
-		printf("Stream dt: %f\n", stream_dt / 1000000.0f);
+			double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
+			printf("Stream dt: %f\n", stream_dt / 1000000.0f);
 
 		// Debugging: write to ppm
 		/*{

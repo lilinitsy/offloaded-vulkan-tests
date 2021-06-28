@@ -32,7 +32,7 @@ struct Client
 		};
 
 		// Comment out below line to run locally
-		server_address.sin_addr.s_addr = inet_addr("192.168.0.181");
+		//server_address.sin_addr.s_addr = inet_addr("192.168.0.181");
 
 
 		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(sockaddr_in));
