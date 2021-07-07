@@ -78,9 +78,9 @@ struct Client
 
 		std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
 		file << "P6\n"
-			<< 1920 << "\n"
-			<< 1080 << "\n"
-			<< 255 << "\n";
+			 << 1920 << "\n"
+			 << 1080 << "\n"
+			 << 255 << "\n";
 
 		int height = 0;
 
@@ -220,8 +220,8 @@ struct DeviceRenderer
 		setup_command_buffers();
 		setup_vk_async();
 
-		//client = Client();
-		//client.connect_to_server(PORT);
+		client = Client();
+		client.connect_to_server(PORT);
 	}
 
 	void game_loop()
@@ -738,6 +738,8 @@ struct DeviceRenderer
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
+		receive_swapchain_image();
+
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
@@ -755,10 +757,70 @@ struct DeviceRenderer
 
 
 	// Test function adapted from sasha's example screenshot
-	VkImage receive_swapchain_image()
+	void receive_swapchain_image()
 	{
+		// Create a VkBuffer
+		VkBuffer image_buffer;
+		VkDeviceMemory image_buffer_memory;
+		VkDeviceSize image_buffer_size = WIDTH * HEIGHT * 3;
+		create_buffer(device, image_buffer_size,
+					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+					  image_buffer, image_buffer_memory);
+		
+		char *data;
+		uint32_t memcpy_offset = 0;
+
+		for(uint32_t i = 0; i < HEIGHT; i++)
+		{
+			// Map the amount of memory that we read. Will need to have an offset...
+			uint32_t servbuf[1920 * 3];
+			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
+			printf("Read from server\n");
+
+			if(server_read != -1)
+			{
+				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 3, 0, (void**) &data);
+				memcpy(data, servbuf, 1920 * 3);
+				vkUnmapMemory(device.logical_device, image_buffer_memory);
+				memcpy_offset += 1920 * 3;
+				printf("Memcpy offset: %u\n", memcpy_offset);
+
+				write(client.socket_fd, "linedone", 8);
+			}
+		}
 		
 
+
+		/*
+		std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << 1920 << "\n"
+			 << 1080 << "\n"
+			 << 255 << "\n";
+
+		uint32_t servbuf[1920 * 3];
+
+		for(uint32_t i = 0; i < HEIGHT; i++)
+		{
+			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
+
+			if(server_read != -1)
+			{
+				uint32_t *row = servbuf;
+				char *rowchar = (char *) row;
+
+				for(uint32_t x = 0; x < 1920; x++)
+				{
+					file.write((char *) row, 3);
+					row++;
+				}
+
+				write(client.socket_fd, "linedone", 8);
+			}
+		}
+
+		file.close();*/
 	}
 
 
