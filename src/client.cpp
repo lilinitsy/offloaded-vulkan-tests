@@ -842,6 +842,8 @@ struct DeviceRenderer
 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
+
+		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}
 
 
