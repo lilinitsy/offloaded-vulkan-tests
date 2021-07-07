@@ -809,30 +809,39 @@ struct DeviceRenderer
 
 		// Image subresource to be used in the vkbufferimagecopy
 		VkImageSubresourceLayers image_subresource = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.aspectMask		= VK_IMAGE_ASPECT_COLOR_BIT,
 			.baseArrayLayer = 0,
-			.layerCount = 1,
+			.layerCount		= 1,
 		};
 
 		// Create the vkbufferimagecopy pregions
 		VkBufferImageCopy copy_region = {
-			.bufferOffset = 0,
-			.bufferRowLength = WIDTH,
+			.bufferOffset	   = 0,
+			.bufferRowLength   = WIDTH,
 			.bufferImageHeight = HEIGHT,
-			.imageSubresource = image_subresource,
-			.imageExtent = {WIDTH, HEIGHT, 1},
+			.imageSubresource  = image_subresource,
+			.imageExtent	   = {WIDTH, HEIGHT, 1},
 		};
 
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
-			image_buffer,
-			swapchain.images[current_frame],
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1, &copy_region);
+							   image_buffer,
+							   swapchain.images[current_frame],
+							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							   1, &copy_region);
 
 		printf("Copy command buffer performed\n");
 
-		
+
+		// Transition swapchain image back
+		transition_image_layout(device, command_pool, copy_cmdbuf,
+								swapchain.images[current_frame],
+								VK_ACCESS_TRANSFER_READ_BIT,		  // src access mask
+								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
+								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // layout transitioning to
+								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
+								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
 	}
 
 
