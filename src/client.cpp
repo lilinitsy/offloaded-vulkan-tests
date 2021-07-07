@@ -762,65 +762,77 @@ struct DeviceRenderer
 		// Create a VkBuffer
 		VkBuffer image_buffer;
 		VkDeviceMemory image_buffer_memory;
-		VkDeviceSize image_buffer_size = WIDTH * HEIGHT * 3;
+		VkDeviceSize image_buffer_size = WIDTH * HEIGHT * sizeof(uint32_t);
 		create_buffer(device, image_buffer_size,
 					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 					  image_buffer, image_buffer_memory);
-		
+
 		char *data;
 		uint32_t memcpy_offset = 0;
 
 		for(uint32_t i = 0; i < HEIGHT; i++)
 		{
-			// Map the amount of memory that we read. Will need to have an offset...
+			// Read from server
 			uint32_t servbuf[1920 * 3];
 			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
-			printf("Read from server\n");
+			//printf("Read from server\n");
 
 			if(server_read != -1)
 			{
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 3, 0, (void**) &data);
+				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
+				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 3, 0, (void **) &data);
 				memcpy(data, servbuf, 1920 * 3);
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
+
+				// Increase the memcpy offset to be representative of the next row's pixels
 				memcpy_offset += 1920 * 3;
-				printf("Memcpy offset: %u\n", memcpy_offset);
+				//printf("Memcpy offset: %u\n", memcpy_offset);
 
 				write(client.socket_fd, "linedone", 8);
 			}
 		}
+
+		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
+		// Transition swapchain image to copyable layout
+		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
+		transition_image_layout(device, command_pool, copy_cmdbuf,
+								swapchain.images[current_frame],
+								VK_ACCESS_MEMORY_READ_BIT,
+								VK_ACCESS_TRANSFER_WRITE_BIT,
+								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // current layout
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
+								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
+								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
+
+		printf("Transition from VK_IMAGE_LAYOUT_PRESENT_SRC_KHR to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL\n");
+
+		// Image subresource to be used in the vkbufferimagecopy
+		VkImageSubresourceLayers image_subresource = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+
+		// Create the vkbufferimagecopy pregions
+		VkBufferImageCopy copy_region = {
+			.bufferOffset = 0,
+			.bufferRowLength = WIDTH,
+			.bufferImageHeight = HEIGHT,
+			.imageSubresource = image_subresource,
+			.imageExtent = {WIDTH, HEIGHT, 1},
+		};
+
+		// Perform the copy
+		vkCmdCopyBufferToImage(copy_cmdbuf,
+			image_buffer,
+			swapchain.images[current_frame],
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &copy_region);
+
+		printf("Copy command buffer performed\n");
+
 		
-
-
-		/*
-		std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-		file << "P6\n"
-			 << 1920 << "\n"
-			 << 1080 << "\n"
-			 << 255 << "\n";
-
-		uint32_t servbuf[1920 * 3];
-
-		for(uint32_t i = 0; i < HEIGHT; i++)
-		{
-			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
-
-			if(server_read != -1)
-			{
-				uint32_t *row = servbuf;
-				char *rowchar = (char *) row;
-
-				for(uint32_t x = 0; x < 1920; x++)
-				{
-					file.write((char *) row, 3);
-					row++;
-				}
-
-				write(client.socket_fd, "linedone", 8);
-			}
-		}
-
-		file.close();*/
 	}
 
 
