@@ -169,6 +169,10 @@ struct DeviceRenderer
 	VkSampler tex_sampler;
 	VulkanAttachment depth_attachment;
 
+	// Buffer that will be copied to
+	VkBuffer image_buffer;
+	VkDeviceMemory image_buffer_memory;
+
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
 
@@ -220,6 +224,8 @@ struct DeviceRenderer
 		setup_command_buffers();
 		setup_vk_async();
 
+		create_copy_image_buffer();
+
 		client = Client();
 		client.connect_to_server(PORT);
 	}
@@ -268,6 +274,10 @@ struct DeviceRenderer
 		vkDestroyBuffer(device.logical_device, vbo, nullptr);
 		vkFreeMemory(device.logical_device, vbo_mem, nullptr);
 		device.destroy();
+
+		// Destroy image buffer
+		vkDestroyBuffer(device.logical_device, image_buffer, nullptr);
+		vkFreeMemory(device.logical_device, image_buffer_memory, nullptr);
 
 		if(ENABLE_VALIDATION_LAYERS)
 		{
@@ -759,15 +769,6 @@ struct DeviceRenderer
 	// Test function adapted from sasha's example screenshot
 	void receive_swapchain_image()
 	{
-		// Create a VkBuffer
-		VkBuffer image_buffer;
-		VkDeviceMemory image_buffer_memory;
-		VkDeviceSize image_buffer_size = WIDTH * HEIGHT * sizeof(uint32_t);
-		create_buffer(device, image_buffer_size,
-					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-					  image_buffer, image_buffer_memory);
-
 		char *data;
 		uint32_t memcpy_offset = 0;
 
@@ -844,6 +845,17 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
 
 		end_command_buffer(device, command_pool, copy_cmdbuf);
+	}
+
+
+	void create_copy_image_buffer()
+	{
+		// Create a VkBuffer
+		VkDeviceSize image_buffer_size = WIDTH * HEIGHT * sizeof(uint32_t);
+		create_buffer(device, image_buffer_size,
+					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+					  image_buffer, image_buffer_memory);
 	}
 
 
