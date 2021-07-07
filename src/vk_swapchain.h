@@ -56,7 +56,7 @@ struct VulkanSwapchain
 		swapchain_ci.imageColorSpace		  = surface_format.colorSpace;
 		swapchain_ci.imageExtent			  = extent;
 		swapchain_ci.imageArrayLayers		  = 1;
-		swapchain_ci.imageUsage				  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
+		swapchain_ci.imageUsage				  = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 		swapchain_ci.imageSharingMode		  = graphics_qf_equals_present_qf ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
 		swapchain_ci.queueFamilyIndexCount	  = graphics_qf_equals_present_qf ? 0 : 2;
 		swapchain_ci.pQueueFamilyIndices	  = graphics_qf_equals_present_qf ? nullptr : qf_indices;
