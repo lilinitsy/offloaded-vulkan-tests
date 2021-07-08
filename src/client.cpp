@@ -720,7 +720,7 @@ struct DeviceRenderer
 			return;
 		}
 
-		update_ubos(image_index);
+		//update_ubos(image_index);
 
 		if(images_in_flight[image_index] != VK_NULL_HANDLE)
 		{
@@ -748,13 +748,13 @@ struct DeviceRenderer
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
-		receive_swapchain_image();
 
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
+		receive_swapchain_image(image_index);		
 		vkQueuePresentKHR(device.present_queue, &present_info);
-
+		
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -767,7 +767,7 @@ struct DeviceRenderer
 
 
 	// Test function adapted from sasha's example screenshot
-	void receive_swapchain_image()
+	void receive_swapchain_image(uint32_t image_index)
 	{
 		char *data;
 		uint32_t memcpy_offset = 0;
@@ -788,7 +788,6 @@ struct DeviceRenderer
 
 				// Increase the memcpy offset to be representative of the next row's pixels
 				memcpy_offset += 1920 * 3;
-				//printf("Memcpy offset: %u\n", memcpy_offset);
 
 				write(client.socket_fd, "linedone", 8);
 			}
@@ -806,7 +805,7 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
 
-		printf("Transition from VK_IMAGE_LAYOUT_PRESENT_SRC_KHR to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL\n");
+		//printf("Transition from VK_IMAGE_LAYOUT_PRESENT_SRC_KHR to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL\n");
 
 		// Image subresource to be used in the vkbufferimagecopy
 		VkImageSubresourceLayers image_subresource = {
@@ -827,7 +826,7 @@ struct DeviceRenderer
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
 							   image_buffer,
-							   swapchain.images[current_frame],
+							   swapchain.images[image_index],
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
 
@@ -836,7 +835,7 @@ struct DeviceRenderer
 
 		// Transition swapchain image back
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[current_frame],
+								swapchain.images[image_index],
 								VK_ACCESS_TRANSFER_READ_BIT,		  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
