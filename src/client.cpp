@@ -796,118 +796,16 @@ struct DeviceRenderer
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
-		
-		// First going to try to create a new destination image
-		VkImage tmpimage;
-		VkDeviceMemory tmpimage_memory;
-		VkExtent3D extent = {SERVERWIDTH, SERVERHEIGHT, 1};
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_SRC_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, tmpimage, tmpimage_memory);
 
-		/*// Now transition dst image to destination layout
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-						tmpimage,
-						0,
-						VK_ACCESS_TRANSFER_WRITE_BIT,
-						VK_IMAGE_LAYOUT_UNDEFINED,
-						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-						VK_PIPELINE_STAGE_TRANSFER_BIT,
-						VK_PIPELINE_STAGE_TRANSFER_BIT);*/
-		// Transition swapchain image from present to source's dst layout
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-			swapchain.images[image_index],
-			VK_ACCESS_MEMORY_READ_BIT, 
-			VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-
-		/*// Transition swapchain image from present to source's transfer layout
+		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
 		transition_image_layout(device, command_pool, copy_cmdbuf,
 								swapchain.images[image_index],
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_ACCESS_TRANSFER_READ_BIT,
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);*/
-		// Transition new image to src layout
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-			tmpimage,
-			0,
-			VK_ACCESS_TRANSFER_READ_BIT,
-			VK_IMAGE_LAYOUT_UNDEFINED,
-			VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		
-		// Copy the image
-		VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources isn't working
-		image_copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		image_copy_region.srcSubresource.layerCount = 1;
-		image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		image_copy_region.dstSubresource.layerCount = 1;
-		image_copy_region.extent.width				= SERVERWIDTH;
-		image_copy_region.extent.height				= SERVERHEIGHT;
-		image_copy_region.extent.depth				= 1;
-
-		vkCmdCopyImage(copy_cmdbuf,
-					   tmpimage,
-					   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					   swapchain.images[image_index],
-					   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					   1,
-					   &image_copy_region);
-
-		/*// Transition dst image to general layout -- lets us map the image memory
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-								tmpimage,
-								VK_ACCESS_TRANSFER_WRITE_BIT,
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_IMAGE_LAYOUT_GENERAL,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);*/
-		// Transition swapchain back to present now?
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-		swapchain.images[image_index],
-		VK_ACCESS_TRANSFER_WRITE_BIT,
-		VK_ACCESS_MEMORY_READ_BIT,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		VK_PIPELINE_STAGE_TRANSFER_BIT,
-		VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-
-
-		/*// transition to swapchain image now that copying is done
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[image_index],
-								VK_ACCESS_TRANSFER_READ_BIT,
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);*/
-
-		
-		
-		
-		
-		// BUFFER COPIES
-		
-		/*transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[current_frame],
-								0,
-								VK_ACCESS_TRANSFER_READ_BIT,
+								VK_ACCESS_MEMORY_READ_BIT,			  // src access_mask
+								VK_ACCESS_TRANSFER_WRITE_BIT,		  // dst access_mask
 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // current layout
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
-		*/
-		//printf("Transition from VK_IMAGE_LAYOUT_PRESENT_SRC_KHR to VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL\n");
 
 		// Image subresource to be used in the vkbufferimagecopy
 		VkImageSubresourceLayers image_subresource = {
@@ -925,7 +823,7 @@ struct DeviceRenderer
 			.imageExtent	   = {SERVERWIDTH, SERVERHEIGHT, 1},
 		};
 
-		/*
+
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
 							   image_buffer,
@@ -934,18 +832,17 @@ struct DeviceRenderer
 							   1, &copy_region);
 
 		printf("Copy command buffer performed\n");
-		*/
 
 		// Transition swapchain image back
-		/*transition_image_layout(device, command_pool, copy_cmdbuf,
+		transition_image_layout(device, command_pool, copy_cmdbuf,
 								swapchain.images[image_index],
-								VK_ACCESS_TRANSFER_READ_BIT,		  // src access mask
+								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
-		*/
+
 		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}
 
