@@ -195,7 +195,7 @@ struct DeviceRenderer
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+		window = glfwCreateWindow(CLIENTWIDTH, CLIENTHEIGHT, "Vulkan", nullptr, nullptr);
 	}
 
 	void init_vulkan()
@@ -663,12 +663,12 @@ struct DeviceRenderer
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
 
-			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+			//vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+			//vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -752,9 +752,9 @@ struct DeviceRenderer
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
-		receive_swapchain_image(image_index);		
+		receive_swapchain_image(image_index);
 		vkQueuePresentKHR(device.present_queue, &present_info);
-		
+
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -772,7 +772,7 @@ struct DeviceRenderer
 		char *data;
 		uint32_t memcpy_offset = 0;
 
-		for(uint32_t i = 0; i < HEIGHT; i++)
+		for(uint32_t i = 0; i < CLIENTHEIGHT; i++)
 		{
 			// Read from server
 			uint32_t servbuf[1920 * 3];
@@ -798,8 +798,8 @@ struct DeviceRenderer
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
 		transition_image_layout(device, command_pool, copy_cmdbuf,
 								swapchain.images[current_frame],
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_ACCESS_TRANSFER_WRITE_BIT,
+								0,
+								VK_ACCESS_TRANSFER_READ_BIT,
 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // current layout
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
@@ -817,10 +817,10 @@ struct DeviceRenderer
 		// Create the vkbufferimagecopy pregions
 		VkBufferImageCopy copy_region = {
 			.bufferOffset	   = 0,
-			.bufferRowLength   = WIDTH,
-			.bufferImageHeight = HEIGHT,
+			.bufferRowLength   = SERVERWIDTH,
+			.bufferImageHeight = SERVERHEIGHT,
 			.imageSubresource  = image_subresource,
-			.imageExtent	   = {WIDTH, HEIGHT, 1},
+			.imageExtent	   = {SERVERWIDTH, SERVERHEIGHT, 1},
 		};
 
 		// Perform the copy
@@ -850,7 +850,7 @@ struct DeviceRenderer
 	void create_copy_image_buffer()
 	{
 		// Create a VkBuffer
-		VkDeviceSize image_buffer_size = WIDTH * HEIGHT * sizeof(uint32_t);
+		VkDeviceSize image_buffer_size = CLIENTWIDTH * CLIENTHEIGHT * sizeof(uint32_t);
 		create_buffer(device, image_buffer_size,
 					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
