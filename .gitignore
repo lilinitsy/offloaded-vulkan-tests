@@ -1,2 +1,5 @@
 .vscode/
 *.ppm
+client
+main
+*.o
