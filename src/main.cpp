@@ -746,17 +746,20 @@ struct HostRenderer
 		gettimeofday(&start_of_stream, nullptr);
 
 		// Write to PPM
-		//std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-		//	file << "P6\n"
-		//		<< SERVERWIDTH << "\n"
-		//		<< SERVERHEIGHT << "\n"
-		//		<< 255 << "\n";
+		/*std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+			file << "P6\n"
+				<< SERVERWIDTH << "\n"
+				<< SERVERHEIGHT << "\n"
+				<< 255 << "\n";*/
 
 
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
+			
+			// Shifting the bits here takes way too much time.
+			
 			send(server.client_fd, row, 1920 * 3, 0);
 
 			// Receive code that line has been written
@@ -764,11 +767,11 @@ struct HostRenderer
 			int client_read = read(server.client_fd, code, 8);
 
 			// Write to PPM
-			//for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			//{
-			//	file.write((char *) row, 3);
-			//	row++;
-			//}
+			/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				file.write((char *) row_shifted, 3);
+				row_shifted++;
+			}*/
 
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}

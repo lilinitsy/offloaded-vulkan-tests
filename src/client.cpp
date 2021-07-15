@@ -703,7 +703,7 @@ struct DeviceRenderer
 
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		//printf("frame dt: %f\n", (dt / 1000000.0f));
+		printf("frame dt: %f\n", (dt / 1000000.0f));
 
 		numframes++;
 	}
@@ -716,37 +716,56 @@ struct DeviceRenderer
 		VkDeviceSize memcpy_offset = 0;
 		std::string filename = "tmpclient" + std::to_string(numframes) + ".ppm";
 
-		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";
-		uint32_t servbuf[1920 * 4];
+			 << 255 << "\n";*/
+		uint32_t servbuf[1920 * 3];
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * 4);
+			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
 			//printf("Read from server\n");
+
+
+			// The packet is a 1920 * 3 image - RGB
+			// But a VkFormat is 1920 * 4 - RGBA
+			// So need to do a bunch of shifts
+
+
+			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
+			uint32_t servbuf_shifted[1920 * 4];
+
+			for(uint32_t i = 0; i < 1920; i++)
+			{
+				for(uint32_t j = 0; j < 3; j++)
+				{
+					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
+					servbuf_shifted[i * 4 + 3] = 0;
+				}
+			}
+
 
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
 				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 4, 0, (void **) &data);
-				memcpy(data, servbuf, 1920 * 4);
+				memcpy(data, servbuf_shifted, 1920 * 4);
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
 
 				// Increase the memcpy offset to be representative of the next row's pixels
 				memcpy_offset += 1920 * 4;
 
 				// Write to PPM
-				uint32_t *row = (uint32_t *) data;
+				/*uint32_t *row = (uint32_t *) data;
 				for(uint32_t x = 0; x < SERVERWIDTH; x++)
 				{
 					file.write((char *) row, 3);
 					row++;
-				}
+				}*/
 
 				// Send next row num back for server to print out
 				uint32_t pixelnum	= i + memcpy_offset / (1920 * 4);
@@ -757,7 +776,7 @@ struct DeviceRenderer
 		}
 
 		// Write to PPM
-		file.close();
+		//file.close();
 
 		printf("framenum client: %lu\n", numframes);
 
