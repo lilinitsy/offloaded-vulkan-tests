@@ -155,6 +155,7 @@ struct HostRenderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
+	uint64_t numframes = 0;
 
 	Server server;
 
@@ -744,6 +745,14 @@ struct HostRenderer
 		timeval end_of_stream;
 		gettimeofday(&start_of_stream, nullptr);
 
+		// Write to PPM
+		//std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+		//	file << "P6\n"
+		//		<< SERVERWIDTH << "\n"
+		//		<< SERVERHEIGHT << "\n"
+		//		<< 255 << "\n";
+
+
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Send scanline
@@ -753,38 +762,28 @@ struct HostRenderer
 			// Receive code that line has been written
 			char code[8];
 			int client_read = read(server.client_fd, code, 8);
-			//printf("%s\n", code);
+
+			// Write to PPM
+			//for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			//{
+			//	file.write((char *) row, 3);
+			//	row++;
+			//}
+
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
+
+
+		printf("framenum server: %lu\n", numframes);
+		numframes++;
+
+		// Write to PPM
+		//file.close();
 
 		gettimeofday(&end_of_stream, nullptr);
 
 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
-		printf("Stream dt: %f\n", stream_dt / 1000000.0f);
-
-		// Debugging: write to ppm
-		/*{
-			std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-			file << "P6\n"
-				<< SERVERWIDTH << "\n"
-				<< SERVERHEIGHT << "\n"
-				<< 255 << "\n";
-
-			for(uint32_t y = 0; y < SERVERHEIGHT; y++)
-			{
-				uint32_t *row = (uint32_t *) image_packet.data;
-
-				for(uint32_t x = 0; x < SERVERWIDTH; x++)
-				{
-					file.write((char *) row, 3);
-					row++;
-				}
-
-				image_packet.data += image_packet.subresource_layout.rowPitch;
-			}
-
-			file.close();
-		}*/
+		//printf("Stream dt: %f\n", stream_dt / 1000000.0f);
 
 		image_packet.destroy(device);
 
@@ -795,7 +794,7 @@ struct HostRenderer
 
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("frame dt: %f\n", (dt / 1000000.0f));
+		//printf("frame dt: %f\n", (dt / 1000000.0f));
 	}
 
 
@@ -891,7 +890,7 @@ struct HostRenderer
 		gettimeofday(&timer_end, nullptr);
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("dt: %f\n", (dt / 1000000.0f));
+		//printf("dt: %f\n", (dt / 1000000.0f));
 
 		return dst;
 	}
