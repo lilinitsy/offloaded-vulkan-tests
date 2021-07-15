@@ -106,7 +106,7 @@ struct DeviceRenderer
 	VkDeviceMemory ibo_mem;
 
 	VulkanAttachment colour_attachment;
-	VkSampler tex_sampler;
+	VkSampler server_frame_sampler;
 	VulkanAttachment depth_attachment;
 
 	// Buffer that will be copied to
@@ -187,7 +187,7 @@ struct DeviceRenderer
 		cleanup_swapchain();
 
 		vkDestroyImageView(device.logical_device, colour_attachment.image_view, nullptr);
-		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
+		vkDestroySampler(device.logical_device, server_frame_sampler, nullptr);
 		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
 		vkFreeMemory(device.logical_device, colour_attachment.memory, nullptr);
 
@@ -359,7 +359,7 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
@@ -385,45 +385,15 @@ struct DeviceRenderer
 
 	void setup_texture()
 	{
-		// Load the image
-		int texture_width;
-		int texture_height;
-		int texture_channels;
-
-		stbi_uc *pixels			  = stbi_load(TEXTURE_PATH.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
-		VkDeviceSize texture_size = texture_width * texture_height * 4;
-
-		if(!pixels)
-		{
-			throw std::runtime_error("Could not load texture image");
-		}
-
-		VkBuffer staging_buffer;
-		VkDeviceMemory staging_buffer_memory;
-
-		create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-		void *data;
-		vkMapMemory(device.logical_device, staging_buffer_memory, 0, texture_size, 0, &data);
-		memcpy(data, pixels, texture_size);
-		vkUnmapMemory(device.logical_device, staging_buffer_memory);
-
-		stbi_image_free(pixels);
-
 
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) texture_width,
-			.height = (uint32_t) texture_height,
+			.width	= (uint32_t) SERVERWIDTH,
+			.height = (uint32_t) SERVERHEIGHT,
 			.depth	= 1,
 		};
 
 
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
-		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
-		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
 	}
 
 	void setup_texture_image()
@@ -440,7 +410,7 @@ struct DeviceRenderer
 																0.0f, VK_TRUE, properties.limits.maxSamplerAnisotropy, VK_FALSE, VK_COMPARE_OP_ALWAYS,
 																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
 
-		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &tex_sampler);
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &server_frame_sampler);
 		if(sampler_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create texture sampler");
