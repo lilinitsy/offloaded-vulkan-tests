@@ -468,7 +468,7 @@ struct DeviceRenderer
 	void setup_graphics_pipeline()
 	{
 		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultclient.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultserver.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultclient.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -743,8 +743,8 @@ struct DeviceRenderer
 				memcpy_offset += 1920 * 4;
 
 				// Write to PPM
-				/*uint32_t *row = (uint32_t *) data;
-				for(uint32_t x = 0; x < SERVERWIDTH; x++)
+				uint32_t *row = (uint32_t *) data;
+				/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
 				{
 					file.write((char *) row, 3);
 					row++;
