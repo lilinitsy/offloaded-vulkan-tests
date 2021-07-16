@@ -125,7 +125,7 @@ struct DeviceRenderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
-	uint64_t numframes = 0;
+	uint64_t numframes	   = 0;
 
 	Client client;
 
@@ -153,9 +153,7 @@ struct DeviceRenderer
 		setup_command_pool();
 		setup_depth();
 		setup_framebuffers();
-		setup_texture();
-		setup_texture_image();
-		setup_sampler();
+		setup_serverimage_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
 		initialize_vertex_buffers(device, model.vertices, &vbo, &vbo_mem, command_pool);
 		initialize_index_buffers(device, model.indices, &ibo, &ibo_mem, command_pool);
@@ -383,7 +381,7 @@ struct DeviceRenderer
 	}
 
 
-	void setup_texture()
+	void setup_serverimage_sampler()
 	{
 
 		VkExtent3D texextent3D = {
@@ -393,16 +391,31 @@ struct DeviceRenderer
 		};
 
 
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
-	}
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 texextent3D,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 colour_attachment.image,
+					 colour_attachment.memory);
+		colour_attachment.image_view = create_image_view(device.logical_device,
+														 colour_attachment.image,
+														 VK_FORMAT_R8G8B8A8_SRGB,
+														 VK_IMAGE_ASPECT_COLOR_BIT);
 
-	void setup_texture_image()
-	{
-		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-	}
+		// Had to create the image with VK_IMAGE_LAYOUT_UNDEFIND so it would automatically be transitioned to PRESENT_SRC_KHR
+		// but now can transition it to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+		/*transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);*/
 
-	void setup_sampler()
-	{
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
 		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
@@ -684,7 +697,7 @@ struct DeviceRenderer
 	{
 		char *data;
 		VkDeviceSize memcpy_offset = 0;
-		std::string filename = "tmpclient" + std::to_string(numframes) + ".ppm";
+		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
 
 		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
@@ -754,15 +767,15 @@ struct DeviceRenderer
 		// Transition swapchain image to copyable layout
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
 
-		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
+		// Transition colour attachment image to be transfer_dst_optimal. Need to note the src and dst access masks
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[image_index],
-								VK_ACCESS_MEMORY_READ_BIT,			  // src access_mask
-								VK_ACCESS_TRANSFER_WRITE_BIT,		  // dst access_mask
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // current layout
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
-								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
-								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
+								colour_attachment.image,
+								VK_ACCESS_MEMORY_READ_BIT,				  // src access_mask
+								VK_ACCESS_TRANSFER_WRITE_BIT,			  // dst access_mask
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // current layout
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // new layout to transfer to (destination)
+								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // dst pipeline mask
+								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // src pipeline mask
 
 		// Image subresource to be used in the vkbufferimagecopy
 		VkImageSubresourceLayers image_subresource = {
@@ -784,7 +797,7 @@ struct DeviceRenderer
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
 							   image_buffer,
-							   swapchain.images[image_index],
+							   colour_attachment.image,
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
 
@@ -792,11 +805,11 @@ struct DeviceRenderer
 
 		// Transition swapchain image back
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[image_index],
+								colour_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // layout transitioning to
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	  // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
 
