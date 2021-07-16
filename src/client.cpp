@@ -467,8 +467,8 @@ struct DeviceRenderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefault.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefault.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultclient.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultserver.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -587,12 +587,13 @@ struct DeviceRenderer
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
 
-			//vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			//vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			//vkCmdDrawIndexed(command_buffers[i], 3, 1, 0, 0, 0);
+			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -631,6 +632,9 @@ struct DeviceRenderer
 		timeval timer_start;
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
+
+		receive_swapchain_image();
+
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
@@ -676,7 +680,6 @@ struct DeviceRenderer
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
-		receive_swapchain_image(image_index);
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
 
@@ -692,8 +695,7 @@ struct DeviceRenderer
 	}
 
 
-	// Test function adapted from sasha's example screenshot
-	void receive_swapchain_image(uint32_t image_index)
+	void receive_swapchain_image()
 	{
 		char *data;
 		VkDeviceSize memcpy_offset = 0;
@@ -717,8 +719,6 @@ struct DeviceRenderer
 			// The packet is a 1920 * 3 image - RGB
 			// But a VkFormat is 1920 * 4 - RGBA
 			// So need to do a bunch of shifts
-
-
 			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
 			uint32_t servbuf_shifted[1920 * 4];
 
@@ -727,7 +727,7 @@ struct DeviceRenderer
 				for(uint32_t j = 0; j < 3; j++)
 				{
 					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
-					servbuf_shifted[i * 4 + 3] = 0;
+					servbuf_shifted[i * 4 + 3] = 255;
 				}
 			}
 
@@ -803,7 +803,7 @@ struct DeviceRenderer
 
 		//printf("Copy command buffer performed\n");
 
-		// Transition swapchain image back
+		// Transition colour attachment image back to be ready by shader
 		transition_image_layout(device, command_pool, copy_cmdbuf,
 								colour_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask

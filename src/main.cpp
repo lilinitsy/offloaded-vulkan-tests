@@ -155,7 +155,7 @@ struct HostRenderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
-	uint64_t numframes = 0;
+	uint64_t numframes	   = 0;
 
 	Server server;
 
@@ -529,8 +529,8 @@ struct HostRenderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefault.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefault.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultserver.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultserver.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -757,9 +757,9 @@ struct HostRenderer
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
-			
+
 			// Shifting the bits here takes way too much time.
-			
+
 			send(server.client_fd, row, 1920 * 3, 0);
 
 			// Receive code that line has been written
