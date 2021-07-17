@@ -411,10 +411,15 @@ struct DeviceRenderer
 
 		// Had to create the image with VK_IMAGE_LAYOUT_UNDEFIND so it would automatically be transitioned to PRESENT_SRC_KHR
 		// but now can transition it to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-		/*transition_image_layout(device, command_pool, colour_attachment.image,
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		transition_image_layout(device, command_pool, colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);*/
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
@@ -633,7 +638,6 @@ struct DeviceRenderer
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
-		receive_swapchain_image();
 
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
@@ -649,6 +653,7 @@ struct DeviceRenderer
 		}
 
 		//update_ubos(image_index);
+		receive_swapchain_image();
 
 		if(images_in_flight[image_index] != VK_NULL_HANDLE)
 		{
