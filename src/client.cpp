@@ -706,12 +706,12 @@ struct DeviceRenderer
 		VkDeviceSize memcpy_offset = 0;
 		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
 
-		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";*/
-		uint32_t servbuf[1920 * 3];
+			 << 255 << "\n";
+		uint8_t servbuf[1920 * 3];
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
@@ -725,15 +725,16 @@ struct DeviceRenderer
 			// But a VkFormat is 1920 * 4 - RGBA
 			// So need to do a bunch of shifts
 			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
-			uint32_t servbuf_shifted[1920 * 4];
+			uint8_t servbuf_shifted[1920 * 4];
 
 			for(uint32_t i = 0; i < 1920; i++)
 			{
 				for(uint32_t j = 0; j < 3; j++)
 				{
 					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
-					servbuf_shifted[i * 4 + 3] = 255;
 				}
+
+				servbuf_shifted[i * 4 + 3] = 255;
 			}
 
 
@@ -748,12 +749,12 @@ struct DeviceRenderer
 				memcpy_offset += 1920 * 4;
 
 				// Write to PPM
-				uint32_t *row = (uint32_t *) data;
-				/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
+				uint8_t *row = servbuf_shifted;
+				for(uint32_t x = 0; x < SERVERWIDTH; x++)
 				{
 					file.write((char *) row, 3);
-					row++;
-				}*/
+					row += 4;
+				}
 
 				// Send next row num back for server to print out
 				uint32_t pixelnum	= i + memcpy_offset / (1920 * 4);
