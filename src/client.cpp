@@ -691,43 +691,24 @@ struct DeviceRenderer
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
-		uint32_t servbuf[1920 * 3];
+		uint32_t servbuf[1920];
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
+			int server_read = read(client.socket_fd, servbuf, 1920 * sizeof(uint32_t));
 			//printf("Read from server\n");
-
-
-			// The packet is a 1920 * 3 image - RGB
-			// But a VkFormat is 1920 * 4 - RGBA
-			// So need to do a bunch of shifts
-
-
-			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
-			uint32_t servbuf_shifted[1920 * 4];
-
-			for(uint32_t i = 0; i < 1920; i++)
-			{
-				for(uint32_t j = 0; j < 3; j++)
-				{
-					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
-					servbuf_shifted[i * 4 + 3] = 0;
-				}
-			}
-
 
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 4, 0, (void **) &data);
-				memcpy(data, servbuf_shifted, 1920 * 4);
+				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * sizeof(uint32_t), 0, (void **) &data);
+				memcpy(data, servbuf, 1920 * sizeof(uint32_t));
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
 
 				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += 1920 * 4;
+				memcpy_offset += 1920 * sizeof(uint32_t);
 
 				// Write to PPM
 				/*uint32_t *row = (uint32_t *) data;
@@ -738,7 +719,7 @@ struct DeviceRenderer
 				}*/
 
 				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / (1920 * 4);
+				uint32_t pixelnum	= i + memcpy_offset / (1920 * sizeof(uint32_t));
 				std::string strcode = std::to_string(pixelnum);
 				char *code			= (char *) strcode.c_str();
 				write(client.socket_fd, code, 8);
