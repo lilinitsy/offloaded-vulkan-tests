@@ -398,7 +398,7 @@ struct DeviceRenderer
 					 1, 1,
 					 VK_SAMPLE_COUNT_1_BIT,
 					 VK_IMAGE_TILING_OPTIMAL,
-					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -597,7 +597,7 @@ struct DeviceRenderer
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			//vkCmdDrawIndexed(command_buffers[i], 3, 1, 0, 0, 0);
+			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
@@ -706,58 +706,46 @@ struct DeviceRenderer
 		VkDeviceSize memcpy_offset = 0;
 		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
 
-		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";
-		uint8_t servbuf[1920 * 3];
+			 << 255 << "\n";*/
+		uint32_t servbuf[1920];
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
+			int server_read = read(client.socket_fd, servbuf, 1920 * sizeof(uint32_t));
 			//printf("Read from server\n");
 
 
-			// The packet is a 1920 * 3 image - RGB
-			// But a VkFormat is 1920 * 4 - RGBA
+			// The packet is a 1920 * sizeof(uint32_t) image - RGB
+			// But a VkFormat is 1920 * sizeof(uint32_t) - RGBA
 			// So need to do a bunch of shifts
 			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
-			uint8_t servbuf_shifted[1920 * 4];
-
-			for(uint32_t i = 0; i < 1920; i++)
-			{
-				for(uint32_t j = 0; j < 3; j++)
-				{
-					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
-				}
-
-				servbuf_shifted[i * 4 + 3] = 255;
-			}
-
 
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 4, 0, (void **) &data);
-				memcpy(data, servbuf_shifted, 1920 * 4);
+				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * sizeof(uint32_t), 0, (void **) &data);
+				memcpy(data, servbuf, 1920 * sizeof(uint32_t));
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
 
 				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += 1920 * 4;
+				memcpy_offset += 1920 * sizeof(uint32_t);
 
 				// Write to PPM
-				uint8_t *row = servbuf_shifted;
+				/*uint32_t *row = servbuf;
 				for(uint32_t x = 0; x < SERVERWIDTH; x++)
 				{
 					file.write((char *) row, 3);
-					row += 4;
-				}
+					row++;
+				}*/
 
 				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / (1920 * 4);
+				uint32_t pixelnum	= i + memcpy_offset / (1920 * sizeof(uint32_t));
 				std::string strcode = std::to_string(pixelnum);
 				char *code			= (char *) strcode.c_str();
 				write(client.socket_fd, code, 8);

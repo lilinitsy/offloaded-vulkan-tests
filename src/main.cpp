@@ -760,7 +760,7 @@ struct HostRenderer
 
 			// Shifting the bits here takes way too much time.
 
-			send(server.client_fd, row, 1920 * 3, 0);
+			send(server.client_fd, row, 1920 * sizeof(uint32_t), 0);
 
 			// Receive code that line has been written
 			char code[8];
