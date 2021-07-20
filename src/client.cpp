@@ -125,7 +125,7 @@ struct DeviceRenderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
-	uint64_t numframes = 0;
+	uint64_t numframes	   = 0;
 
 	Client client;
 
@@ -385,15 +385,66 @@ struct DeviceRenderer
 
 	void setup_texture()
 	{
+		// Load the image
+		int texture_width;
+		int texture_height;
+		int texture_channels;
+
+		stbi_uc *pixels			  = stbi_load(TEXTURE_PATH.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
+		VkDeviceSize texture_size = texture_width * texture_height * 4;
+
+		if(!pixels)
+		{
+			throw std::runtime_error("Could not load texture image");
+		}
+
+		VkBuffer staging_buffer;
+		VkDeviceMemory staging_buffer_memory;
+
+		create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+		void *data;
+		vkMapMemory(device.logical_device, staging_buffer_memory, 0, texture_size, 0, &data);
+		memcpy(data, pixels, texture_size);
+		vkUnmapMemory(device.logical_device, staging_buffer_memory);
+
+		stbi_image_free(pixels);
+
 
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) SERVERWIDTH,
-			.height = (uint32_t) SERVERHEIGHT,
+			.width	= (uint32_t) texture_width,
+			.height = (uint32_t) texture_height,
 			.depth	= 1,
 		};
 
 
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 texextent3D,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 colour_attachment.image,
+					 colour_attachment.memory);
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		copy_buffer_to_image(device, command_pool, staging_buffer,
+							 colour_attachment.image,
+							 texture_width,
+							 texture_height);
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
+		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
 	}
 
 	void setup_texture_image()
@@ -574,12 +625,12 @@ struct DeviceRenderer
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
 
-			//vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			//vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -631,7 +682,7 @@ struct DeviceRenderer
 			return;
 		}
 
-		//update_ubos(image_index);
+		update_ubos(image_index);
 
 		if(images_in_flight[image_index] != VK_NULL_HANDLE)
 		{
@@ -663,8 +714,8 @@ struct DeviceRenderer
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
-		receive_swapchain_image(image_index);
 		vkQueuePresentKHR(device.present_queue, &present_info);
+		receive_swapchain_image(image_index);
 
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
@@ -683,32 +734,36 @@ struct DeviceRenderer
 	void receive_swapchain_image(uint32_t image_index)
 	{
 		char *data;
-		VkDeviceSize memcpy_offset = 0;
-		std::string filename = "tmpclient" + std::to_string(numframes) + ".ppm";
+		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
 
 		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
-		uint32_t servbuf[1920];
+		uint32_t servbuf[SERVERWIDTH];
+
+
+		// Need to place the rendered frame at the appropriate centered pixels.
+		uint32_t half_serverwidth = SERVERWIDTH / 2;
+		VkDeviceSize memcpy_offset = CLIENTWIDTH * half_serverwidth + (CLIENTWIDTH / 2 - half_serverwidth);
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * sizeof(uint32_t));
+			int server_read = read(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t));
 			//printf("Read from server\n");
 
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * sizeof(uint32_t), 0, (void **) &data);
-				memcpy(data, servbuf, 1920 * sizeof(uint32_t));
+				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, SERVERWIDTH * sizeof(uint32_t), 0, (void **) &data);
+				memcpy(data, servbuf, SERVERWIDTH * sizeof(uint32_t));
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
 
 				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += 1920 * sizeof(uint32_t);
+				memcpy_offset += CLIENTWIDTH * sizeof(uint32_t);
 
 				// Write to PPM
 				/*uint32_t *row = (uint32_t *) data;
@@ -719,7 +774,7 @@ struct DeviceRenderer
 				}*/
 
 				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / (1920 * sizeof(uint32_t));
+				uint32_t pixelnum	= i + memcpy_offset / (CLIENTWIDTH * sizeof(uint32_t));
 				std::string strcode = std::to_string(pixelnum);
 				char *code			= (char *) strcode.c_str();
 				write(client.socket_fd, code, 8);

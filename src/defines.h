@@ -6,8 +6,8 @@
 #include <vulkan/vulkan.h>
 
 #define ENABLE_VALIDATION_LAYERS true
-const uint32_t SERVERWIDTH	= 1920;
-const uint32_t SERVERHEIGHT = 1080;
+const uint32_t SERVERWIDTH	= 512;
+const uint32_t SERVERHEIGHT = 288; // this keeps 16:9 res
 
 const uint32_t CLIENTWIDTH	= 1920;
 const uint32_t CLIENTHEIGHT = 1080;

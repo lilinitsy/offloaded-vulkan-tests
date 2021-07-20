@@ -155,7 +155,7 @@ struct HostRenderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
-	uint64_t numframes = 0;
+	uint64_t numframes	   = 0;
 
 	Server server;
 
@@ -757,10 +757,10 @@ struct HostRenderer
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
-			
+
 			// Shifting the bits here takes way too much time.
-			
-			send(server.client_fd, row, 1920 * sizeof(uint32_t), 0);
+
+			send(server.client_fd, row, SERVERWIDTH * sizeof(uint32_t), 0);
 
 			// Receive code that line has been written
 			char code[8];
