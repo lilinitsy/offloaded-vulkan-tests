@@ -745,8 +745,20 @@ struct DeviceRenderer
 
 
 		// Need to place the rendered frame at the appropriate centered pixels.
+
+		uint32_t row_index = CLIENTHEIGHT / 2 - SERVERHEIGHT / 2;
+		uint32_t row_indent = CLIENTWIDTH / 2 - SERVERWIDTH / 2;
+		row_index *= CLIENTWIDTH;
+		row_index *= sizeof(uint32_t);
+		row_indent *= sizeof(uint32_t);
+
+		printf("ROW INDEX: %u\n", row_index);
+		printf("ROW INDENT: %u\n", row_indent);
+
 		uint32_t half_serverwidth = SERVERWIDTH / 2;
-		VkDeviceSize memcpy_offset = CLIENTWIDTH * half_serverwidth + (CLIENTWIDTH / 2 - half_serverwidth);
+		uint32_t heightdiff = CLIENTHEIGHT - SERVERHEIGHT;
+		VkDeviceSize memcpy_offset = row_index + row_indent;
+		printf("MEMCPY OFFSET: %u\n", memcpy_offset);
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
