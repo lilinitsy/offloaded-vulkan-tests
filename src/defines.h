@@ -12,7 +12,7 @@ const uint32_t SERVERHEIGHT = 288; // this keeps 16:9 res
 const uint32_t CLIENTWIDTH	= 1920;
 const uint32_t CLIENTHEIGHT = 1080;
 
-const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
 // clang-format off
 const std::vector<const char*> required_validation_layers = 

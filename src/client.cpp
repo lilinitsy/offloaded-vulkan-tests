@@ -630,7 +630,7 @@ struct DeviceRenderer
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -734,7 +734,7 @@ struct DeviceRenderer
 	void receive_swapchain_image(uint32_t image_index)
 	{
 		char *data;
-		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
+		std::string filename = "tmpclient" + std::to_string(numframes) + ".ppm";
 
 		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
@@ -746,19 +746,24 @@ struct DeviceRenderer
 
 		// Need to place the rendered frame at the appropriate centered pixels.
 
-		uint32_t row_index = CLIENTHEIGHT / 2 - SERVERHEIGHT / 2;
+		uint32_t row_index	= CLIENTHEIGHT / 2 - SERVERHEIGHT / 2;
 		uint32_t row_indent = CLIENTWIDTH / 2 - SERVERWIDTH / 2;
+
+		printf("Pixel start (x, y): (%u, %u)\n", row_indent, row_index);
+
 		row_index *= CLIENTWIDTH;
 		row_index *= sizeof(uint32_t);
 		row_indent *= sizeof(uint32_t);
 
-		printf("ROW INDEX: %u\n", row_index);
-		printf("ROW INDENT: %u\n", row_indent);
 
-		uint32_t half_serverwidth = SERVERWIDTH / 2;
-		uint32_t heightdiff = CLIENTHEIGHT - SERVERHEIGHT;
+
+		//printf("ROW INDEX: %u\n", row_index);
+		//printf("ROW INDENT: %u\n", row_indent);
+
+		uint32_t half_serverwidth  = SERVERWIDTH / 2;
+		uint32_t heightdiff		   = CLIENTHEIGHT - SERVERHEIGHT;
 		VkDeviceSize memcpy_offset = row_index + row_indent;
-		printf("MEMCPY OFFSET: %u\n", memcpy_offset);
+		//printf("MEMCPY OFFSET: %u\n", memcpy_offset);
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
