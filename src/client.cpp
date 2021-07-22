@@ -78,6 +78,7 @@ struct DeviceRenderer
 {
 	void run()
 	{
+		srand(static_cast<unsigned>(time(0)));
 		initWindow();
 		init_vulkan();
 		game_loop();
@@ -165,8 +166,8 @@ struct DeviceRenderer
 
 		create_copy_image_buffer();
 
-		client = Client();
-		client.connect_to_server(PORT);
+		/*client = Client();	
+		client.connect_to_server(PORT);*/
 	}
 
 	void game_loop()
@@ -597,8 +598,8 @@ struct DeviceRenderer
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			//vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -638,6 +639,7 @@ struct DeviceRenderer
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
+		receive_swapchain_image();
 
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
@@ -653,7 +655,6 @@ struct DeviceRenderer
 		}
 
 		//update_ubos(image_index);
-		receive_swapchain_image();
 
 		if(images_in_flight[image_index] != VK_NULL_HANDLE)
 		{
@@ -717,7 +718,7 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * sizeof(uint32_t));
+			//int server_read = read(client.socket_fd, servbuf, 1920 * sizeof(uint32_t));
 			//printf("Read from server\n");
 
 
@@ -726,8 +727,15 @@ struct DeviceRenderer
 			// So need to do a bunch of shifts
 			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
 
-			if(server_read != -1)
+			// test some fuckery
+			for(uint32_t i = 0; i < 1920; i++)
 			{
+				servbuf[i] = static_cast<float>(rand()) / static_cast<float>(RAND_MAX / 255);
+				//printf("servbuf i: %u\n", servbuf[i]);
+			}
+
+			//if(server_read != -1)
+			//{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
 				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * sizeof(uint32_t), 0, (void **) &data);
 				memcpy(data, servbuf, 1920 * sizeof(uint32_t));
@@ -748,8 +756,8 @@ struct DeviceRenderer
 				uint32_t pixelnum	= i + memcpy_offset / (1920 * sizeof(uint32_t));
 				std::string strcode = std::to_string(pixelnum);
 				char *code			= (char *) strcode.c_str();
-				write(client.socket_fd, code, 8);
-			}
+				//write(client.socket_fd, code, 8);
+			//}
 		}
 
 		// Write to PPM
@@ -797,15 +805,15 @@ struct DeviceRenderer
 
 		//printf("Copy command buffer performed\n");
 
-		// Transition colour attachment image back to be ready by shader
+		// Transition colour attachment image back to be read by shader
 		transition_image_layout(device, command_pool, copy_cmdbuf,
 								colour_attachment.image,
-								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask
-								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	  // layout transitioning to
-								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
-								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
+								VK_ACCESS_TRANSFER_WRITE_BIT,			  // src access mask
+								VK_ACCESS_MEMORY_READ_BIT,				  // dst access mask
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // current layout
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // layout transitioning to
+								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
+								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
 		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}
