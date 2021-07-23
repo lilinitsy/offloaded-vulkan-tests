@@ -385,7 +385,7 @@ struct DeviceRenderer
 
 	void setup_texture()
 	{
-		colour += 90;
+		/*colour += 90;
 		// Load the image
 		int texture_width;
 		int texture_height;
@@ -418,21 +418,21 @@ struct DeviceRenderer
 
 		stbi_image_free(pixels);
 
-
+		*/
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) texture_width,
-			.height = (uint32_t) texture_height,
+			.width	= (uint32_t) 2048,
+			.height = (uint32_t) 2048,
 			.depth	= 1,
 		};
 
 
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
 		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
+		//copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
 		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
+		//vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
+		//vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
 	}
 
 	void setup_texture_image()
