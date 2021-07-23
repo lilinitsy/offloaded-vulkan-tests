@@ -125,7 +125,7 @@ struct DeviceRenderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
-	uint64_t numframes = 0;
+	uint64_t numframes	   = 0;
 
 	Client client;
 
@@ -167,8 +167,8 @@ struct DeviceRenderer
 
 		create_copy_image_buffer();
 
-		client = Client();
-		client.connect_to_server(PORT);
+		//client = Client();
+		//client.connect_to_server(PORT);
 	}
 
 	void game_loop()
@@ -385,6 +385,7 @@ struct DeviceRenderer
 
 	void setup_texture()
 	{
+		colour += 90;
 		// Load the image
 		int texture_width;
 		int texture_height;
@@ -392,6 +393,14 @@ struct DeviceRenderer
 
 		stbi_uc *pixels			  = stbi_load(TEXTURE_PATH.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
 		VkDeviceSize texture_size = texture_width * texture_height * 4;
+
+		// fuck with the texture data
+		uint32_t i;
+		for(i = 0; i < texture_width * texture_height * texture_channels; i++)
+		{
+			pixels[i] = static_cast<float>(rand()) / (RAND_MAX / 255);
+		}
+		printf("i: %u\n", i);
 
 		if(!pixels)
 		{
@@ -604,12 +613,12 @@ struct DeviceRenderer
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
 
-			//vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			//vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -642,6 +651,95 @@ struct DeviceRenderer
 		}
 	}
 
+	char colour = 0;
+
+	void tmp_fuck_sampler()
+	{
+		char *pixels = (char *) malloc(2048 * 2048 * 4 * sizeof(char));
+		colour += 90;
+		uint32_t i;
+		for(i = 0; i < 2048 * 2048 * 4; i++)
+		{
+			//pixels[i] = static_cast<float>(rand()) / (RAND_MAX / 255);
+			pixels[i] = colour;
+		}
+		printf("i: %u\n", i);
+
+		VkBuffer staging_buffer;
+		VkDeviceMemory staging_buffer_memory;
+
+		create_buffer(device, 16777216, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+		void *data;
+		vkMapMemory(device.logical_device, staging_buffer_memory, 0, 16777216, 0, &data);
+		memcpy(data, pixels, 16777216);
+		vkUnmapMemory(device.logical_device, staging_buffer_memory);
+
+		free(pixels);
+
+
+		VkExtent3D texextent3D = {
+			.width	= (uint32_t) 2048,
+			.height = (uint32_t) 2048,
+			.depth	= 1,
+		};
+
+
+		//create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
+		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
+	
+		// Transition colour attachment image to be transfer_dst_optimal
+		transition_image_layout(device, command_pool, copy_cmdbuf,
+			colour_attachment.image,
+			VK_ACCESS_MEMORY_READ_BIT,
+			VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+		VkImageSubresourceLayers image_subresource = {
+			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
+			.baseArrayLayer = 0,
+			.layerCount = 1,
+		};
+
+		VkBufferImageCopy copy_region = {
+			.bufferOffset = 0,
+			.bufferRowLength = 2048,
+			.bufferImageHeight = 2048,
+			.imageSubresource = image_subresource,
+			.imageExtent = {2048, 2048, 1},
+		};
+
+		vkCmdCopyBufferToImage(copy_cmdbuf,
+			staging_buffer,
+			colour_attachment.image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			1, &copy_region);
+
+		
+
+		/*copy_buffer_to_image(device, command_pool,
+							 staging_buffer,
+							 colour_attachment.image,
+							 2048,
+							 2048);*/
+
+		// Transition colour attachment image back to be ready by shader
+		transition_image_layout(device, command_pool, copy_cmdbuf,
+			colour_attachment.image,
+			VK_ACCESS_TRANSFER_WRITE_BIT,
+			VK_ACCESS_MEMORY_READ_BIT,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT);
+		end_command_buffer(device, command_pool, copy_cmdbuf);
+
+		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
+		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
+	}
+
 
 	void render_complete_frame()
 	{
@@ -661,7 +759,7 @@ struct DeviceRenderer
 			return;
 		}
 
-		//update_ubos(image_index);
+		update_ubos(image_index);
 
 		if(images_in_flight[image_index] != VK_NULL_HANDLE)
 		{
@@ -693,7 +791,8 @@ struct DeviceRenderer
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
-		receive_swapchain_image(image_index);
+		//receive_swapchain_image(image_index);
+		tmp_fuck_sampler();
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
 
@@ -714,7 +813,7 @@ struct DeviceRenderer
 	{
 		char *data;
 		VkDeviceSize memcpy_offset = 0;
-		std::string filename = "tmpclient" + std::to_string(numframes) + ".ppm";
+		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
 
 		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"

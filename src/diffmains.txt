@@ -1,0 +1,452 @@
+0a1,2
+> 
+> 
+19a22
+> 
+43d45
+< 
+47c49,71
+< struct Client
+---
+> struct ImagePacket
+> {
+> 	VkImage image;
+> 	VkDeviceMemory memory;
+> 	VkSubresourceLayout subresource_layout;
+> 	char *data;
+> 
+> 	void map_memory(VulkanDevice device)
+> 	{
+> 		vkMapMemory(device.logical_device, memory, 0, VK_WHOLE_SIZE, 0, (void **) &data);
+> 		data += subresource_layout.offset;
+> 	}
+> 
+> 	void destroy(VulkanDevice device)
+> 	{
+> 		vkUnmapMemory(device.logical_device, memory);
+> 		vkFreeMemory(device.logical_device, memory, nullptr);
+> 		vkDestroyImage(device.logical_device, image, nullptr);
+> 	}
+> };
+> 
+> 
+> struct Server
+49a74
+> 	int client_fd;
+51c76
+< 	Client()
+---
+> 	Server()
+52a78
+> 		// Create socket
+54c80
+< 		if(socket_fd == -1)
+---
+> 		if(socket_fd == 0)
+56c82
+< 			throw std::runtime_error("Could not create a socket");
+---
+> 			throw std::runtime_error("Socket creation failed");
+60c86
+< 	void connect_to_server(int port)
+---
+> 	void connect_to_client(int port)
+62c88,90
+< 		sockaddr_in server_address = {
+---
+> 
+> 		// define the address struct to be for TCP using this port
+> 		sockaddr_in address = {
+67,69c95,97
+< 
+< 		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(server_address));
+< 		if(connect_result == -1)
+---
+> 		// bind to socket
+> 		int binding = bind(socket_fd, (sockaddr *) &address, sizeof(address));
+> 		if(binding == -1)
+71c99
+< 			throw std::runtime_error("Could not connect to server");
+---
+> 			throw std::runtime_error("Bind to socket failed");
+72a101,105
+> 
+> 		// Listen for a client to connect
+> 		listen(socket_fd, 1);
+> 		// Accept a connection from a client
+> 		client_fd = accept(socket_fd, nullptr, nullptr);
+77c110,111
+< struct DeviceRenderer
+---
+> 
+> struct HostRenderer
+112,115d145
+< 	// Buffer that will be copied to
+< 	VkBuffer image_buffer;
+< 	VkDeviceMemory image_buffer_memory;
+< 
+130c160
+< 	Client client;
+---
+> 	Server server;
+139c169
+< 		window = glfwCreateWindow(CLIENTWIDTH, CLIENTHEIGHT, "Vulkan", nullptr, nullptr);
+---
+> 		window = glfwCreateWindow(SERVERWIDTH, SERVERHEIGHT, "Vulkan", nullptr, nullptr);
+168,171c198,199
+< 		create_copy_image_buffer();
+< 
+< 		//client = Client();
+< 		//client.connect_to_server(PORT);
+---
+> 		server = Server();
+> 		server.connect_to_client(PORT);
+219,222d246
+< 		// Destroy image buffer
+< 		vkDestroyBuffer(device.logical_device, image_buffer, nullptr);
+< 		vkFreeMemory(device.logical_device, image_buffer_memory, nullptr);
+< 
+420,423c444,468
+< 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
+< 		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+< 		copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
+< 		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+---
+> 		create_image(device, 0,
+> 					 VK_IMAGE_TYPE_2D,
+> 					 VK_FORMAT_R8G8B8A8_SRGB,
+> 					 texextent3D,
+> 					 1, 1,
+> 					 VK_SAMPLE_COUNT_1_BIT,
+> 					 VK_IMAGE_TILING_OPTIMAL,
+> 					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+> 					 VK_SHARING_MODE_EXCLUSIVE,
+> 					 VK_IMAGE_LAYOUT_UNDEFINED,
+> 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+> 					 colour_attachment.image,
+> 					 colour_attachment.memory);
+> 		transition_image_layout(device, command_pool, colour_attachment.image,
+> 								VK_FORMAT_R8G8B8A8_SRGB,
+> 								VK_IMAGE_LAYOUT_UNDEFINED,
+> 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+> 		copy_buffer_to_image(device, command_pool, staging_buffer,
+> 							 colour_attachment.image,
+> 							 texture_width,
+> 							 texture_height);
+> 		transition_image_layout(device, command_pool, colour_attachment.image,
+> 								VK_FORMAT_R8G8B8A8_SRGB,
+> 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+> 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+664c709
+< 		//update_ubos(image_index);
+---
+> 		update_ubos(image_index);
+692d736
+< 
+696d739
+< 		//receive_swapchain_image(image_index);
+698a742
+> 		ImagePacket image_packet = copy_swapchain_image();
+700c744,746
+< 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+---
+> 		timeval start_of_stream;
+> 		timeval end_of_stream;
+> 		gettimeofday(&start_of_stream, nullptr);
+702c748,753
+< 		gettimeofday(&timer_end, nullptr);
+---
+> 		// Write to PPM
+> 		/*std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+> 			file << "P6\n"
+> 				<< SERVERWIDTH << "\n"
+> 				<< SERVERHEIGHT << "\n"
+> 				<< 255 << "\n";*/
+705,706c756,774
+< 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
+< 		printf("frame dt: %f\n", (dt / 1000000.0f));
+---
+> 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+> 		{
+> 			// Send scanline
+> 			uint32_t *row = (uint32_t *) image_packet.data;
+> 			
+> 			// Shifting the bits here takes way too much time.
+> 			
+> 			send(server.client_fd, row, 1920 * 3, 0);
+> 
+> 			// Receive code that line has been written
+> 			char code[8];
+> 			int client_read = read(server.client_fd, code, 8);
+> 
+> 			// Write to PPM
+> 			/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
+> 			{
+> 				file.write((char *) row_shifted, 3);
+> 				row_shifted++;
+> 			}*/
+707a776,780
+> 			image_packet.data += image_packet.subresource_layout.rowPitch;
+> 		}
+> 
+> 
+> 		printf("framenum server: %lu\n", numframes);
+709d781
+< 	}
+710a783,784
+> 		// Write to PPM
+> 		//file.close();
+712,724c786
+< 	// Test function adapted from sasha's example screenshot
+< 	void receive_swapchain_image(uint32_t image_index)
+< 	{
+< 		char *data;
+< 		VkDeviceSize memcpy_offset = 0;
+< 		std::string filename = "tmpclient" + std::to_string(numframes) + ".ppm";
+< 
+< 		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
+< 		file << "P6\n"
+< 			 << SERVERWIDTH << "\n"
+< 			 << SERVERHEIGHT << "\n"
+< 			 << 255 << "\n";*/
+< 		uint32_t servbuf[1920 * 3];
+---
+> 		gettimeofday(&end_of_stream, nullptr);
+726,731c788,789
+< 		// Fetch server frame
+< 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+< 		{
+< 			// Read from server
+< 			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
+< 			//printf("Read from server\n");
+---
+> 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
+> 		//printf("Stream dt: %f\n", stream_dt / 1000000.0f);
+732a791
+> 		image_packet.destroy(device);
+734,736d792
+< 			// The packet is a 1920 * 3 image - RGB
+< 			// But a VkFormat is 1920 * 4 - RGBA
+< 			// So need to do a bunch of shifts
+737a794
+> 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
+739,740c796
+< 			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
+< 			uint32_t servbuf_shifted[1920 * 4];
+---
+> 		gettimeofday(&timer_end, nullptr);
+742,749d797
+< 			for(uint32_t i = 0; i < 1920; i++)
+< 			{
+< 				for(uint32_t j = 0; j < 3; j++)
+< 				{
+< 					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
+< 					servbuf_shifted[i * 4 + 3] = 0;
+< 				}
+< 			}
+750a799,801
+> 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
+> 		//printf("frame dt: %f\n", (dt / 1000000.0f));
+> 	}
+752,776d802
+< 			if(server_read != -1)
+< 			{
+< 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
+< 				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 4, 0, (void **) &data);
+< 				memcpy(data, servbuf_shifted, 1920 * 4);
+< 				vkUnmapMemory(device.logical_device, image_buffer_memory);
+< 
+< 				// Increase the memcpy offset to be representative of the next row's pixels
+< 				memcpy_offset += 1920 * 4;
+< 
+< 				// Write to PPM
+< 				/*uint32_t *row = (uint32_t *) data;
+< 				for(uint32_t x = 0; x < SERVERWIDTH; x++)
+< 				{
+< 					file.write((char *) row, 3);
+< 					row++;
+< 				}*/
+< 
+< 				// Send next row num back for server to print out
+< 				uint32_t pixelnum	= i + memcpy_offset / (1920 * 4);
+< 				std::string strcode = std::to_string(pixelnum);
+< 				char *code			= (char *) strcode.c_str();
+< 				write(client.socket_fd, code, 8);
+< 			}
+< 		}
+778,779c804,809
+< 		// Write to PPM
+< 		//file.close();
+---
+> 	// Test function adapted from sasha's example screenshot
+> 	ImagePacket copy_swapchain_image()
+> 	{
+> 		timeval timer_start;
+> 		timeval timer_end;
+> 		gettimeofday(&timer_start, nullptr);
+781c811,882
+< 		printf("framenum client: %lu\n", numframes);
+---
+> 		// Use the most recently rendered swapchain image as the source
+> 		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
+> 		VkImage src_image			   = swapchain.images[current_frame];
+> 
+> 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
+> 		ImagePacket dst;
+> 		VkExtent3D extent = {SERVERWIDTH, SERVERHEIGHT, 1};
+> 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
+> 
+> 		// Blit from the swapchain image to the copied image
+> 		//VkCommandBuffer copy_command = begin_command_buffer(device, command_pool);
+> 
+> 		// Transition dst image to destination layout
+> 		transition_image_layout(device, command_pool, copy_cmdbuffer,
+> 								dst.image,
+> 								0,
+> 								VK_ACCESS_TRANSFER_WRITE_BIT,
+> 								VK_IMAGE_LAYOUT_UNDEFINED,
+> 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT);
+> 
+> 		// Transition swapchain image from present to source's transfer layout
+> 		transition_image_layout(device, command_pool, copy_cmdbuffer,
+> 								src_image,
+> 								VK_ACCESS_MEMORY_READ_BIT,
+> 								VK_ACCESS_TRANSFER_READ_BIT,
+> 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+> 								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT);
+> 
+> 
+> 		// Copy the image
+> 		VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources isn't working
+> 		image_copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+> 		image_copy_region.srcSubresource.layerCount = 1;
+> 		image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+> 		image_copy_region.dstSubresource.layerCount = 1;
+> 		image_copy_region.extent.width				= SERVERWIDTH;
+> 		image_copy_region.extent.height				= SERVERHEIGHT;
+> 		image_copy_region.extent.depth				= 1;
+> 
+> 		vkCmdCopyImage(copy_cmdbuffer,
+> 					   src_image,
+> 					   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+> 					   dst.image,
+> 					   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+> 					   1,
+> 					   &image_copy_region);
+> 
+> 
+> 		// Transition dst image to general layout -- lets us map the image memory
+> 		transition_image_layout(device, command_pool, copy_cmdbuffer,
+> 								dst.image,
+> 								VK_ACCESS_TRANSFER_WRITE_BIT,
+> 								VK_ACCESS_MEMORY_READ_BIT,
+> 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+> 								VK_IMAGE_LAYOUT_GENERAL,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT);
+> 
+> 
+> 		// transition to swapchain image now that copying is done
+> 		transition_image_layout(device, command_pool, copy_cmdbuffer,
+> 								src_image,
+> 								VK_ACCESS_TRANSFER_READ_BIT,
+> 								VK_ACCESS_MEMORY_READ_BIT,
+> 								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+> 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT,
+> 								VK_PIPELINE_STAGE_TRANSFER_BIT);
+783,802c884
+< 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
+< 		// Transition swapchain image to copyable layout
+< 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
+< 
+< 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
+< 		transition_image_layout(device, command_pool, copy_cmdbuf,
+< 								swapchain.images[image_index],
+< 								VK_ACCESS_MEMORY_READ_BIT,			  // src access_mask
+< 								VK_ACCESS_TRANSFER_WRITE_BIT,		  // dst access_mask
+< 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // current layout
+< 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
+< 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
+< 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
+< 
+< 		// Image subresource to be used in the vkbufferimagecopy
+< 		VkImageSubresourceLayers image_subresource = {
+< 			.aspectMask		= VK_IMAGE_ASPECT_COLOR_BIT,
+< 			.baseArrayLayer = 0,
+< 			.layerCount		= 1,
+< 		};
+---
+> 		end_command_buffer(device, command_pool, copy_cmdbuffer);
+804,811c886,887
+< 		// Create the vkbufferimagecopy pregions
+< 		VkBufferImageCopy copy_region = {
+< 			.bufferOffset	   = 0,
+< 			.bufferRowLength   = SERVERWIDTH,
+< 			.bufferImageHeight = SERVERHEIGHT,
+< 			.imageSubresource  = image_subresource,
+< 			.imageExtent	   = {SERVERWIDTH, SERVERHEIGHT, 1},
+< 		};
+---
+> 		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
+> 		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
+812a889
+> 		dst.map_memory(device);
+814,834d890
+< 		// Perform the copy
+< 		vkCmdCopyBufferToImage(copy_cmdbuf,
+< 							   image_buffer,
+< 							   swapchain.images[image_index],
+< 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+< 							   1, &copy_region);
+< 
+< 		//printf("Copy command buffer performed\n");
+< 
+< 		// Transition swapchain image back
+< 		transition_image_layout(device, command_pool, copy_cmdbuf,
+< 								swapchain.images[image_index],
+< 								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask
+< 								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
+< 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
+< 								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // layout transitioning to
+< 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
+< 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
+< 
+< 		end_command_buffer(device, command_pool, copy_cmdbuf);
+< 	}
+837,844c893,898
+< 	void create_copy_image_buffer()
+< 	{
+< 		// Create a VkBuffer
+< 		VkDeviceSize image_buffer_size = CLIENTWIDTH * CLIENTHEIGHT * sizeof(uint32_t);
+< 		create_buffer(device, image_buffer_size,
+< 					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+< 					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+< 					  image_buffer, image_buffer_memory);
+---
+> 		gettimeofday(&timer_end, nullptr);
+> 
+> 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
+> 		//printf("dt: %f\n", (dt / 1000000.0f));
+> 
+> 		return dst;
+864,867d917
+< 
+< 
+< 
+< 
+870,871c920,921
+< 	DeviceRenderer device_renderer;
+< 	device_renderer.run();
+---
+> 	HostRenderer host_renderer;
+> 	host_renderer.run();
+874c924
+< }
+\ No newline at end of file
+---
+> }
