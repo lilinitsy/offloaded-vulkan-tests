@@ -387,54 +387,40 @@ struct DeviceRenderer
 
 	void setup_texture()
 	{
-		/*colour += 90;
-		// Load the image
-		int texture_width;
-		int texture_height;
-		int texture_channels;
-
-		stbi_uc *pixels			  = stbi_load(TEXTURE_PATH.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
-		VkDeviceSize texture_size = texture_width * texture_height * 4;
-
-		// fuck with the texture data
-		uint32_t i;
-		for(i = 0; i < texture_width * texture_height * texture_channels; i++)
-		{
-			pixels[i] = static_cast<float>(rand()) / (RAND_MAX / 255);
-		}
-		printf("i: %u\n", i);
-
-		if(!pixels)
-		{
-			throw std::runtime_error("Could not load texture image");
-		}
-
-		VkBuffer staging_buffer;
-		VkDeviceMemory staging_buffer_memory;
-
-		create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-		void *data;
-		vkMapMemory(device.logical_device, staging_buffer_memory, 0, texture_size, 0, &data);
-		memcpy(data, pixels, texture_size);
-		vkUnmapMemory(device.logical_device, staging_buffer_memory);
-
-		stbi_image_free(pixels);
-
-		*/
 		VkExtent3D texextent3D = {
 			.width	= (uint32_t) 1920,
 			.height = (uint32_t) 1080,
 			.depth	= 1,
 		};
 
-
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
-		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		//copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
-		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
-		//vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-		//vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
+		// Create image that will be bound to sampler
+		create_image(device, 0, 
+		VK_IMAGE_TYPE_2D, 
+		VK_FORMAT_R8G8B8A8_SRGB, 
+		texextent3D, 
+		1, 1, 
+		VK_SAMPLE_COUNT_1_BIT, 
+		VK_IMAGE_TILING_OPTIMAL, 
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
+		VK_SHARING_MODE_EXCLUSIVE, 
+		VK_IMAGE_LAYOUT_UNDEFINED, 
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
+		colour_attachment.image, 
+		colour_attachment.memory);
+		
+		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
+		transition_image_layout(device, command_pool, 
+		colour_attachment.image, 
+		VK_FORMAT_R8G8B8A8_SRGB, 
+		VK_IMAGE_LAYOUT_UNDEFINED, 
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		
+		// Now transition to shader read only optimal
+		transition_image_layout(device, command_pool, 
+		colour_attachment.image, 
+		VK_FORMAT_R8G8B8A8_SRGB, 
+		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 	void setup_texture_image()
@@ -888,8 +874,6 @@ struct DeviceRenderer
 							   colour_attachment.image,
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
-
-		//printf("Copy command buffer performed\n");
 
 		// Transition swapchain image back
 		transition_image_layout(device, command_pool, copy_cmdbuf,
