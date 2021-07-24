@@ -391,33 +391,33 @@ struct DeviceRenderer
 		};
 
 		// Create image that will be bound to sampler
-		create_image(device, 0, 
-		VK_IMAGE_TYPE_2D, 
-		VK_FORMAT_R8G8B8A8_SRGB, 
-		texextent3D, 
-		1, 1, 
-		VK_SAMPLE_COUNT_1_BIT, 
-		VK_IMAGE_TILING_OPTIMAL, 
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, 
-		VK_SHARING_MODE_EXCLUSIVE, 
-		VK_IMAGE_LAYOUT_UNDEFINED, 
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, 
-		colour_attachment.image, 
-		colour_attachment.memory);
-		
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 texextent3D,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 colour_attachment.image,
+					 colour_attachment.memory);
+
 		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
-		transition_image_layout(device, command_pool, 
-		colour_attachment.image, 
-		VK_FORMAT_R8G8B8A8_SRGB, 
-		VK_IMAGE_LAYOUT_UNDEFINED, 
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		
+		transition_image_layout(device, command_pool,
+								colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
 		// Now transition to shader read only optimal
-		transition_image_layout(device, command_pool, 
-		colour_attachment.image, 
-		VK_FORMAT_R8G8B8A8_SRGB, 
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 
-		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		transition_image_layout(device, command_pool,
+								colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 	void setup_texture_image()
@@ -723,7 +723,7 @@ struct DeviceRenderer
 		{
 			// Read from server
 			int server_read = read(client.socket_fd, servbuf, 1920 * 4);
-	
+
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
@@ -762,12 +762,12 @@ struct DeviceRenderer
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
 		transition_image_layout(device, command_pool, copy_cmdbuf,
 								colour_attachment.image,
-								VK_ACCESS_MEMORY_READ_BIT,			  // src access_mask
-								VK_ACCESS_TRANSFER_WRITE_BIT,		  // dst access_mask
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	  // current layout
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
-								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
-								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
+								VK_ACCESS_MEMORY_READ_BIT,				  // src access_mask
+								VK_ACCESS_TRANSFER_WRITE_BIT,			  // dst access_mask
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // current layout
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // new layout to transfer to (destination)
+								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // dst pipeline mask
+								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // src pipeline mask
 
 		// Image subresource to be used in the vkbufferimagecopy
 		VkImageSubresourceLayers image_subresource = {
@@ -796,12 +796,12 @@ struct DeviceRenderer
 		// Transition swapchain image back
 		transition_image_layout(device, command_pool, copy_cmdbuf,
 								colour_attachment.image,
-								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask
-								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	  // layout transitioning to
-								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
-								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
+								VK_ACCESS_TRANSFER_WRITE_BIT,			  // src access mask
+								VK_ACCESS_MEMORY_READ_BIT,				  // dst access mask
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // current layout
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // layout transitioning to
+								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
+								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
 		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}
