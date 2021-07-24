@@ -119,7 +119,6 @@ struct DeviceRenderer
 	VkDescriptorSetLayout descriptor_set_layout;
 	VkDescriptorPool descriptor_pool;
 	std::vector<VkDescriptorSet> descriptor_sets;
-	char *sampler_pixels;
 
 	std::vector<VkSemaphore> image_available_semaphores;
 	std::vector<VkSemaphore> render_finished_semaphores;
@@ -142,7 +141,6 @@ struct DeviceRenderer
 
 	void init_vulkan()
 	{
-		sampler_pixels = (char *) malloc(1920 * 1080 * 4 * sizeof(char));
 		setup_instance();
 		setupDebugMessenger(instance, &debug_messenger);
 		setup_surface();
@@ -187,7 +185,6 @@ struct DeviceRenderer
 	void cleanup()
 	{
 		cleanup_swapchain();
-		free(sampler_pixels);
 		vkDestroyImageView(device.logical_device, colour_attachment.image_view, nullptr);
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
 		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
@@ -637,85 +634,6 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to create synchronization objects for a frame!");
 			}
 		}
-	}
-
-	char colour = 0;
-
-	void tmp_fuck_sampler()
-	{
-		colour += 90;
-		uint32_t i;
-		for(i = 0; i < 1920 * 1080 * 4; i++)
-		{
-			//pixels[i] = static_cast<float>(rand()) / (RAND_MAX / 255);
-			sampler_pixels[i] = colour;
-		}
-		printf("i: %u\n", i);
-
-		VkBuffer staging_buffer;
-		VkDeviceMemory staging_buffer_memory;
-
-		create_buffer(device, 8294400, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-		void *data;
-		vkMapMemory(device.logical_device, staging_buffer_memory, 0, 8294400, 0, &data);
-		memcpy(data, sampler_pixels, 8294400);
-		vkUnmapMemory(device.logical_device, staging_buffer_memory);
-
-
-		VkExtent3D texextent3D = {
-			.width	= (uint32_t) 1920,
-			.height = (uint32_t) 1080,
-			.depth	= 1,
-		};
-
-
-		//create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
-		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
-	
-		// Transition colour attachment image to be transfer_dst_optimal
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-			colour_attachment.image,
-			VK_ACCESS_MEMORY_READ_BIT,
-			VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		VkImageSubresourceLayers image_subresource = {
-			.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT,
-			.baseArrayLayer = 0,
-			.layerCount = 1,
-		};
-
-		VkBufferImageCopy copy_region = {
-			.bufferOffset = 0,
-			.bufferRowLength = 1920,
-			.bufferImageHeight = 1080,
-			.imageSubresource = image_subresource,
-			.imageExtent = {1920, 1080, 1},
-		};
-
-		vkCmdCopyBufferToImage(copy_cmdbuf,
-			staging_buffer,
-			colour_attachment.image,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			1, &copy_region);
-
-
-		// Transition colour attachment image back to be ready by shader
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-			colour_attachment.image,
-			VK_ACCESS_TRANSFER_WRITE_BIT,
-			VK_ACCESS_MEMORY_READ_BIT,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-			VK_PIPELINE_STAGE_TRANSFER_BIT,
-			VK_PIPELINE_STAGE_TRANSFER_BIT);
-		end_command_buffer(device, command_pool, copy_cmdbuf);
-
-		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
 	}
 
 
