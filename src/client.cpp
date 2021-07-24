@@ -154,7 +154,9 @@ struct DeviceRenderer
 		setup_command_pool();
 		setup_depth();
 		setup_framebuffers();
-		setup_serverimage_sampler();
+		setup_texture();
+		setup_texture_image();
+		setup_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
 		initialize_vertex_buffers(device, model.vertices, &vbo, &vbo_mem, command_pool);
 		initialize_index_buffers(device, model.indices, &ibo, &ibo_mem, command_pool);
@@ -382,46 +384,29 @@ struct DeviceRenderer
 	}
 
 
-	void setup_serverimage_sampler()
+	void setup_texture()
 	{
-
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) SERVERWIDTH,
-			.height = (uint32_t) SERVERHEIGHT,
+			.width	= (uint32_t) 2048,
+			.height = (uint32_t) 2048,
 			.depth	= 1,
 		};
 
 
-		create_image(device, 0,
-					 VK_IMAGE_TYPE_2D,
-					 VK_FORMAT_R8G8B8A8_SRGB,
-					 texextent3D,
-					 1, 1,
-					 VK_SAMPLE_COUNT_1_BIT,
-					 VK_IMAGE_TILING_OPTIMAL,
-					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-					 VK_SHARING_MODE_EXCLUSIVE,
-					 VK_IMAGE_LAYOUT_UNDEFINED,
-					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-					 colour_attachment.image,
-					 colour_attachment.memory);
-		colour_attachment.image_view = create_image_view(device.logical_device,
-														 colour_attachment.image,
-														 VK_FORMAT_R8G8B8A8_SRGB,
-														 VK_IMAGE_ASPECT_COLOR_BIT);
+		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
+		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		//copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
+		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+	}
 
-		// Had to create the image with VK_IMAGE_LAYOUT_UNDEFIND so it would automatically be transitioned to PRESENT_SRC_KHR
-		// but now can transition it to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-		transition_image_layout(device, command_pool, colour_attachment.image,
-								VK_FORMAT_R8G8B8A8_SRGB,
-								VK_IMAGE_LAYOUT_UNDEFINED,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+	void setup_texture_image()
+	{
+		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+	}
 
-		transition_image_layout(device, command_pool, colour_attachment.image,
-								VK_FORMAT_R8G8B8A8_SRGB,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
+	void setup_sampler()
+	{
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
 		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
@@ -434,6 +419,18 @@ struct DeviceRenderer
 		{
 			throw std::runtime_error("Could not create texture sampler");
 		}
+
+		// Had to create the image with VK_IMAGE_LAYOUT_UNDEFIND so it would automatically be transitioned to PRESENT_SRC_KHR
+		// but now can transition it to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 
@@ -736,27 +733,27 @@ struct DeviceRenderer
 
 			//if(server_read != -1)
 			//{
-				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * sizeof(uint32_t), 0, (void **) &data);
-				memcpy(data, servbuf, 1920 * sizeof(uint32_t));
-				vkUnmapMemory(device.logical_device, image_buffer_memory);
+			// Map the image buffer memory using char *data at the current memcpy offset based on the current read
+			vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * sizeof(uint32_t), 0, (void **) &data);
+			memcpy(data, servbuf, 1920 * sizeof(uint32_t));
+			vkUnmapMemory(device.logical_device, image_buffer_memory);
 
-				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += 1920 * sizeof(uint32_t);
+			// Increase the memcpy offset to be representative of the next row's pixels
+			memcpy_offset += 1920 * sizeof(uint32_t);
 
-				// Write to PPM
-				/*uint32_t *row = servbuf;
+			// Write to PPM
+			/*uint32_t *row = servbuf;
 				for(uint32_t x = 0; x < SERVERWIDTH; x++)
 				{
 					file.write((char *) row, 3);
 					row++;
 				}*/
 
-				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / (1920 * sizeof(uint32_t));
-				std::string strcode = std::to_string(pixelnum);
-				char *code			= (char *) strcode.c_str();
-				//write(client.socket_fd, code, 8);
+			// Send next row num back for server to print out
+			uint32_t pixelnum	= i + memcpy_offset / (1920 * sizeof(uint32_t));
+			std::string strcode = std::to_string(pixelnum);
+			char *code			= (char *) strcode.c_str();
+			//write(client.socket_fd, code, 8);
 			//}
 		}
 
