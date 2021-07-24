@@ -394,8 +394,10 @@ struct DeviceRenderer
 
 
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
+		
+		// Had to create the image with VK_IMAGE_LAYOUT_UNDEFIND so it would automatically be transitioned to PRESENT_SRC_KHR
+		// but now can transition it to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		//copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
 		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
@@ -419,18 +421,6 @@ struct DeviceRenderer
 		{
 			throw std::runtime_error("Could not create texture sampler");
 		}
-
-		// Had to create the image with VK_IMAGE_LAYOUT_UNDEFIND so it would automatically be transitioned to PRESENT_SRC_KHR
-		// but now can transition it to VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
-		transition_image_layout(device, command_pool, colour_attachment.image,
-								VK_FORMAT_R8G8B8A8_SRGB,
-								VK_IMAGE_LAYOUT_UNDEFINED,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-		transition_image_layout(device, command_pool, colour_attachment.image,
-								VK_FORMAT_R8G8B8A8_SRGB,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 	}
 
 
