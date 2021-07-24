@@ -495,8 +495,8 @@ struct DeviceRenderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefault.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefault.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultclient.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultclient.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -747,6 +747,7 @@ struct DeviceRenderer
 		gettimeofday(&timer_start, nullptr);
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+		tmp_fuck_sampler();
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -791,7 +792,6 @@ struct DeviceRenderer
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
 		//receive_swapchain_image(image_index);
-		tmp_fuck_sampler();
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
 
