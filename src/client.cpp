@@ -142,7 +142,7 @@ struct DeviceRenderer
 
 	void init_vulkan()
 	{
-		sampler_pixels = (char *) malloc(2048 * 2048 * 4 * sizeof(char));
+		sampler_pixels = (char *) malloc(1920 * 1080 * 4 * sizeof(char));
 		setup_instance();
 		setupDebugMessenger(instance, &debug_messenger);
 		setup_surface();
@@ -169,8 +169,8 @@ struct DeviceRenderer
 
 		create_copy_image_buffer();
 
-		//client = Client();
-		//client.connect_to_server(PORT);
+		client = Client();
+		client.connect_to_server(PORT);
 	}
 
 	void game_loop()
@@ -422,8 +422,8 @@ struct DeviceRenderer
 
 		*/
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) 2048,
-			.height = (uint32_t) 2048,
+			.width	= (uint32_t) 1920,
+			.height = (uint32_t) 1080,
 			.depth	= 1,
 		};
 
@@ -659,7 +659,7 @@ struct DeviceRenderer
 	{
 		colour += 90;
 		uint32_t i;
-		for(i = 0; i < 2048 * 2048 * 4; i++)
+		for(i = 0; i < 1920 * 1080 * 4; i++)
 		{
 			//pixels[i] = static_cast<float>(rand()) / (RAND_MAX / 255);
 			sampler_pixels[i] = colour;
@@ -669,16 +669,16 @@ struct DeviceRenderer
 		VkBuffer staging_buffer;
 		VkDeviceMemory staging_buffer_memory;
 
-		create_buffer(device, 16777216, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+		create_buffer(device, 8294400, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 		void *data;
-		vkMapMemory(device.logical_device, staging_buffer_memory, 0, 16777216, 0, &data);
-		memcpy(data, sampler_pixels, 16777216);
+		vkMapMemory(device.logical_device, staging_buffer_memory, 0, 8294400, 0, &data);
+		memcpy(data, sampler_pixels, 8294400);
 		vkUnmapMemory(device.logical_device, staging_buffer_memory);
 
 
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) 2048,
-			.height = (uint32_t) 2048,
+			.width	= (uint32_t) 1920,
+			.height = (uint32_t) 1080,
 			.depth	= 1,
 		};
 
@@ -704,10 +704,10 @@ struct DeviceRenderer
 
 		VkBufferImageCopy copy_region = {
 			.bufferOffset = 0,
-			.bufferRowLength = 2048,
-			.bufferImageHeight = 2048,
+			.bufferRowLength = 1920,
+			.bufferImageHeight = 1080,
 			.imageSubresource = image_subresource,
-			.imageExtent = {2048, 2048, 1},
+			.imageExtent = {1920, 1080, 1},
 		};
 
 		vkCmdCopyBufferToImage(copy_cmdbuf,
@@ -716,13 +716,6 @@ struct DeviceRenderer
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			1, &copy_region);
 
-		
-
-		/*copy_buffer_to_image(device, command_pool,
-							 staging_buffer,
-							 colour_attachment.image,
-							 2048,
-							 2048);*/
 
 		// Transition colour attachment image back to be ready by shader
 		transition_image_layout(device, command_pool, copy_cmdbuf,
@@ -747,7 +740,8 @@ struct DeviceRenderer
 		gettimeofday(&timer_start, nullptr);
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-		tmp_fuck_sampler();
+		//tmp_fuck_sampler();
+		receive_swapchain_image();
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -791,7 +785,6 @@ struct DeviceRenderer
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
-		//receive_swapchain_image(image_index);
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
 
@@ -808,7 +801,7 @@ struct DeviceRenderer
 
 
 	// Test function adapted from sasha's example screenshot
-	void receive_swapchain_image(uint32_t image_index)
+	void receive_swapchain_image()
 	{
 		char *data;
 		VkDeviceSize memcpy_offset = 0;
@@ -825,33 +818,13 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * 3);
-			//printf("Read from server\n");
-
-
-			// The packet is a 1920 * 3 image - RGB
-			// But a VkFormat is 1920 * 4 - RGBA
-			// So need to do a bunch of shifts
-
-
-			// Something's wrong with this shift - it's leaving every 3rd or 4th pixel black.
-			uint32_t servbuf_shifted[1920 * 4];
-
-			for(uint32_t i = 0; i < 1920; i++)
-			{
-				for(uint32_t j = 0; j < 3; j++)
-				{
-					servbuf_shifted[i * 4 + j] = servbuf[i * 3 + j];
-					servbuf_shifted[i * 4 + 3] = 0;
-				}
-			}
-
-
+			int server_read = read(client.socket_fd, servbuf, 1920 * 4);
+	
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
 				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 4, 0, (void **) &data);
-				memcpy(data, servbuf_shifted, 1920 * 4);
+				memcpy(data, servbuf, 1920 * 4);
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
 
 				// Increase the memcpy offset to be representative of the next row's pixels
@@ -884,10 +857,10 @@ struct DeviceRenderer
 
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[image_index],
+								colour_attachment.image,
 								VK_ACCESS_MEMORY_READ_BIT,			  // src access_mask
 								VK_ACCESS_TRANSFER_WRITE_BIT,		  // dst access_mask
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // current layout
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	  // current layout
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // new layout to transfer to (destination)
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // dst pipeline mask
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // src pipeline mask
@@ -912,7 +885,7 @@ struct DeviceRenderer
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
 							   image_buffer,
-							   swapchain.images[image_index],
+							   colour_attachment.image,
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
 
@@ -920,11 +893,11 @@ struct DeviceRenderer
 
 		// Transition swapchain image back
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								swapchain.images[image_index],
+								colour_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,		  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,			  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, // current layout
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,	  // layout transitioning to
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,	  // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,		  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);	  // pipeline flags
 

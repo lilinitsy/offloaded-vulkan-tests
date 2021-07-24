@@ -529,8 +529,8 @@ struct HostRenderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefault.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefault.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultserver.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultserver.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -760,7 +760,7 @@ struct HostRenderer
 
 			// Shifting the bits here takes way too much time.
 
-			send(server.client_fd, row, 1920 * 3, 0);
+			send(server.client_fd, row, 1920 * 4, 0);
 
 			// Receive code that line has been written
 			char code[8];
