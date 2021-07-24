@@ -119,6 +119,7 @@ struct DeviceRenderer
 	VkDescriptorSetLayout descriptor_set_layout;
 	VkDescriptorPool descriptor_pool;
 	std::vector<VkDescriptorSet> descriptor_sets;
+	char *sampler_pixels;
 
 	std::vector<VkSemaphore> image_available_semaphores;
 	std::vector<VkSemaphore> render_finished_semaphores;
@@ -141,6 +142,7 @@ struct DeviceRenderer
 
 	void init_vulkan()
 	{
+		sampler_pixels = (char *) malloc(2048 * 2048 * 4 * sizeof(char));
 		setup_instance();
 		setupDebugMessenger(instance, &debug_messenger);
 		setup_surface();
@@ -185,7 +187,7 @@ struct DeviceRenderer
 	void cleanup()
 	{
 		cleanup_swapchain();
-
+		free(sampler_pixels);
 		vkDestroyImageView(device.logical_device, colour_attachment.image_view, nullptr);
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
 		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
@@ -655,13 +657,12 @@ struct DeviceRenderer
 
 	void tmp_fuck_sampler()
 	{
-		char *pixels = (char *) malloc(2048 * 2048 * 4 * sizeof(char));
 		colour += 90;
 		uint32_t i;
 		for(i = 0; i < 2048 * 2048 * 4; i++)
 		{
 			//pixels[i] = static_cast<float>(rand()) / (RAND_MAX / 255);
-			pixels[i] = colour;
+			sampler_pixels[i] = colour;
 		}
 		printf("i: %u\n", i);
 
@@ -671,10 +672,8 @@ struct DeviceRenderer
 		create_buffer(device, 16777216, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
 		void *data;
 		vkMapMemory(device.logical_device, staging_buffer_memory, 0, 16777216, 0, &data);
-		memcpy(data, pixels, 16777216);
+		memcpy(data, sampler_pixels, 16777216);
 		vkUnmapMemory(device.logical_device, staging_buffer_memory);
-
-		free(pixels);
 
 
 		VkExtent3D texextent3D = {
