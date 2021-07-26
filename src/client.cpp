@@ -106,7 +106,7 @@ struct DeviceRenderer
 	VkDeviceMemory ibo_mem;
 
 	VulkanAttachment colour_attachment;
-	VkSampler tex_sampler;
+	VkSampler server_frame_sampler;
 	VulkanAttachment depth_attachment;
 
 	// Buffer that will be copied to
@@ -153,9 +153,7 @@ struct DeviceRenderer
 		setup_command_pool();
 		setup_depth();
 		setup_framebuffers();
-		setup_texture();
-		setup_texture_image();
-		setup_sampler();
+		setup_serverframe_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
 		initialize_vertex_buffers(device, model.vertices, &vbo, &vbo_mem, command_pool);
 		initialize_index_buffers(device, model.indices, &ibo, &ibo_mem, command_pool);
@@ -186,7 +184,7 @@ struct DeviceRenderer
 	{
 		cleanup_swapchain();
 		vkDestroyImageView(device.logical_device, colour_attachment.image_view, nullptr);
-		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
+		vkDestroySampler(device.logical_device, server_frame_sampler, nullptr);
 		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
 		vkFreeMemory(device.logical_device, colour_attachment.memory, nullptr);
 
@@ -358,7 +356,7 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
@@ -382,11 +380,11 @@ struct DeviceRenderer
 	}
 
 
-	void setup_texture()
+	void setup_serverframe_sampler()
 	{
 		VkExtent3D texextent3D = {
-			.width	= (uint32_t) 1920,
-			.height = (uint32_t) 1080,
+			.width	= (uint32_t) SERVERWIDTH,
+			.height = (uint32_t) SERVERHEIGHT,
 			.depth	= 1,
 		};
 
@@ -418,15 +416,11 @@ struct DeviceRenderer
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-	}
 
-	void setup_texture_image()
-	{
+		// Create image view for the colour attachment
 		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
-	}
 
-	void setup_sampler()
-	{
+		// Create the sampler
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
 		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
@@ -434,11 +428,12 @@ struct DeviceRenderer
 																0.0f, VK_TRUE, properties.limits.maxSamplerAnisotropy, VK_FALSE, VK_COMPARE_OP_ALWAYS,
 																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
 
-		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &tex_sampler);
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &server_frame_sampler);
 		if(sampler_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create texture sampler");
 		}
+
 	}
 
 
@@ -644,7 +639,6 @@ struct DeviceRenderer
 		gettimeofday(&timer_start, nullptr);
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-		//tmp_fuck_sampler();
 		receive_swapchain_image();
 
 		uint32_t image_index;
@@ -716,23 +710,24 @@ struct DeviceRenderer
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
-		uint32_t servbuf[1920 * 3];
+		uint32_t servbuf[SERVERWIDTH];
+		VkDeviceSize num_bytes = SERVERWIDTH * sizeof(uint32_t);
 
 		// Fetch server frame
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, 1920 * 4);
+			int server_read = read(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t));
 
 			if(server_read != -1)
 			{
 				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, 1920 * 4, 0, (void **) &data);
-				memcpy(data, servbuf, 1920 * 4);
+				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, num_bytes, 0, (void **) &data);
+				memcpy(data, servbuf, (size_t) num_bytes);
 				vkUnmapMemory(device.logical_device, image_buffer_memory);
 
 				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += 1920 * 4;
+				memcpy_offset += num_bytes;
 
 				// Write to PPM
 				/*uint32_t *row = (uint32_t *) data;
@@ -743,7 +738,7 @@ struct DeviceRenderer
 				}*/
 
 				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / (1920 * 4);
+				uint32_t pixelnum	= i + memcpy_offset / num_bytes;
 				std::string strcode = std::to_string(pixelnum);
 				char *code			= (char *) strcode.c_str();
 				write(client.socket_fd, code, 8);
