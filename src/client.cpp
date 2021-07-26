@@ -109,6 +109,9 @@ struct DeviceRenderer
 	VkSampler server_frame_sampler;
 	VulkanAttachment depth_attachment;
 
+	VulkanAttachment texcolour_attachment;
+	VkSampler tex_sampler;
+
 	// Buffer that will be copied to
 	VkBuffer image_buffer;
 	VkDeviceMemory image_buffer_memory;
@@ -154,6 +157,7 @@ struct DeviceRenderer
 		setup_depth();
 		setup_framebuffers();
 		setup_serverframe_sampler();
+		setup_texture_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
 		initialize_vertex_buffers(device, model.vertices, &vbo, &vbo_mem, command_pool);
 		initialize_index_buffers(device, model.indices, &ibo, &ibo_mem, command_pool);
@@ -307,12 +311,14 @@ struct DeviceRenderer
 	void setup_descriptor_set_layout()
 	{
 		VkDescriptorSetLayoutBinding ubo_layout_binding		= vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
-		VkDescriptorSetLayoutBinding sampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding server_framesampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding tex_sampler_layout_binding = vki::descriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
 
 		// Put the descriptor set descriptions into a vector
 		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings;
 		descriptor_set_layout_bindings.push_back(ubo_layout_binding);
-		descriptor_set_layout_bindings.push_back(sampler_layout_binding);
+		descriptor_set_layout_bindings.push_back(server_framesampler_layout_binding);
+		descriptor_set_layout_bindings.push_back(tex_sampler_layout_binding);
 
 		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
 		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layout);
@@ -325,7 +331,7 @@ struct DeviceRenderer
 	void setup_descriptor_pool()
 	{
 		VkDescriptorPoolSize poolsize_ubo	  = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, swapchain.images.size());
-		VkDescriptorPoolSize poolsize_sampler = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, swapchain.images.size());
+		VkDescriptorPoolSize poolsize_sampler = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * swapchain.images.size());
 
 		std::vector<VkDescriptorPoolSize> poolsizes;
 		poolsizes.push_back(poolsize_ubo);
@@ -356,18 +362,19 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo serverimage_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo teximage_info = vki::descriptorImageInfo(tex_sampler, texcolour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
 				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
-				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &image_info),
+				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
+				vki::writeDescriptorSet(descriptor_sets[i], 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &teximage_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
 		}
 	}
-
 
 	void setup_depth()
 	{
@@ -377,6 +384,87 @@ struct DeviceRenderer
 
 		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_attachment.image, depth_attachment.memory);
 		depth_attachment.image_view = create_image_view(device.logical_device, depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+	}
+
+
+
+	void setup_texture_sampler()
+	{
+		// Load the image
+		int texture_width;
+		int texture_height;
+		int texture_channels;
+
+		stbi_uc *pixels			  = stbi_load(TEXTURE_PATH.c_str(), &texture_width, &texture_height, &texture_channels, STBI_rgb_alpha);
+		VkDeviceSize texture_size = texture_width * texture_height * 4;
+
+		if(!pixels)
+		{
+			throw std::runtime_error("Could not load texture image");
+		}
+
+		VkBuffer staging_buffer;
+		VkDeviceMemory staging_buffer_memory;
+
+		create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+		void *data;
+		vkMapMemory(device.logical_device, staging_buffer_memory, 0, texture_size, 0, &data);
+		memcpy(data, pixels, texture_size);
+		vkUnmapMemory(device.logical_device, staging_buffer_memory);
+
+		stbi_image_free(pixels);
+
+
+		VkExtent3D texextent3D = {
+			.width	= (uint32_t) texture_width,
+			.height = (uint32_t) texture_height,
+			.depth	= 1,
+		};
+
+
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 texextent3D,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 texcolour_attachment.image,
+					 texcolour_attachment.memory);
+		transition_image_layout(device, command_pool, texcolour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		copy_buffer_to_image(device, command_pool, staging_buffer,
+							 texcolour_attachment.image,
+							 texture_width,
+							 texture_height);
+		transition_image_layout(device, command_pool, texcolour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
+		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
+	
+		texcolour_attachment.image_view = create_image_view(device.logical_device, texcolour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
+		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
+																VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT,
+																0.0f, VK_TRUE, properties.limits.maxSamplerAnisotropy, VK_FALSE, VK_COMPARE_OP_ALWAYS,
+																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
+
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &tex_sampler);
+		if(sampler_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create texture sampler");
+		}
 	}
 
 
@@ -599,6 +687,8 @@ struct DeviceRenderer
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
 			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			//vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+
 
 			vkCmdEndRenderPass(command_buffers[i]);
 
@@ -639,7 +729,15 @@ struct DeviceRenderer
 		gettimeofday(&timer_start, nullptr);
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-		receive_swapchain_image();
+		
+		if(numframes % 100 == 0)
+		{
+			receive_swapchain_image();
+			printf("numframe: %d\n", numframes);
+		}
+		
+
+
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -797,6 +895,8 @@ struct DeviceRenderer
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
+
+		printf("Copy performed\n");
 
 		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}

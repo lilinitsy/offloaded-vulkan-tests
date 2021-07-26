@@ -20,10 +20,10 @@ layout(location = 2) out vec2 frag_quad_uv; // fullscreen quad uv coordinates
 
 void main()
 {
-	//gl_Position = ubo.projection * ubo.view * ubo.model * vec4(in_position, 1.0);
+	gl_Position = ubo.projection * ubo.view * ubo.model * vec4(in_position, 1.0);
 	frag_colour = in_colour;
 	frag_texcoord = in_texcoord;
 	frag_quad_uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
-	gl_Position = vec4(frag_quad_uv * 2.0f - 1.0f, 0.0f, 1.0f);
+	//gl_Position = vec4(frag_quad_uv * 2.0f - 1.0f, 0.0f, 1.0f);
 
 }

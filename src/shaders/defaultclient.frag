@@ -7,10 +7,11 @@ layout(location = 2) in vec2 frag_quad_uv;
 
 layout(location = 0) out vec4 out_colour;
 
-layout(binding = 1) uniform sampler2D tex_sampler;
+layout(binding = 1) uniform sampler2D server_frame_sampler;
+layout(binding = 2) uniform sampler2D teximage_sampler;
 
 
 void main()
 {
-	out_colour = texture(tex_sampler, frag_quad_uv);
+	out_colour = texture(teximage_sampler, frag_texcoord);
 }
