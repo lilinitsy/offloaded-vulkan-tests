@@ -13,5 +13,5 @@ layout(binding = 2) uniform sampler2D teximage_sampler;
 
 void main()
 {
-	out_colour = texture(teximage_sampler, frag_texcoord);
+	out_colour = texture(server_frame_sampler, frag_quad_uv);
 }
