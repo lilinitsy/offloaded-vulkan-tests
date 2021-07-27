@@ -583,7 +583,7 @@ struct DeviceRenderer
 		VkRect2D scissor								 = vki::rect2D({0, 0}, swapchain.swapchain_extent);
 		VkPipelineViewportStateCreateInfo viewport_state = vki::pipelineViewportStateCreateInfo(1, &viewport, 1, &scissor);
 
-		VkPipelineRasterizationStateCreateInfo rasterizer			= vki::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+		VkPipelineRasterizationStateCreateInfo rasterizer			= vki::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
 		VkPipelineMultisampleStateCreateInfo multisampling			= vki::pipelineMultisampleStateCreateInfo(VK_FALSE, VK_SAMPLE_COUNT_1_BIT);
 		VkPipelineColorBlendAttachmentState colour_blend_attachment = vki::pipelineColorBlendAttachmentState(VK_FALSE, VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
 		VkPipelineColorBlendStateCreateInfo colour_blending			= vki::pipelineColorBlendStateCreateInfo(1, &colour_blend_attachment);
@@ -686,8 +686,8 @@ struct DeviceRenderer
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-			//vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 
 
 			vkCmdEndRenderPass(command_buffers[i]);
@@ -730,11 +730,11 @@ struct DeviceRenderer
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 		
-		if(numframes % 100 == 0)
-		{
+		//if(numframes % 100 == 0)
+		//{
 			receive_swapchain_image();
 			printf("numframe: %d\n", numframes);
-		}
+		//}
 		
 
 

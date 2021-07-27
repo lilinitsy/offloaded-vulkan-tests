@@ -24,6 +24,5 @@ void main()
 	frag_colour = in_colour;
 	frag_texcoord = in_texcoord;
 	frag_quad_uv = vec2((gl_VertexIndex << 1) & 2, gl_VertexIndex & 2);
-	gl_Position = vec4(frag_texcoord * 2.0f - 1.0f, 0.0f, 1.0f);
-
+	gl_Position = vec4(frag_quad_uv * 2.0f - 1.0f, 0.0f, 1.0f);
 }
