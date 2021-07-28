@@ -94,8 +94,17 @@ struct DeviceRenderer
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
 
-	VkPipelineLayout pipeline_layout;
-	VkPipeline graphics_pipeline;
+	struct
+	{
+		VkPipelineLayout model_pipeline_layout;
+		VkPipelineLayout fsquad_pipeline_layout;
+	} pipeline_layouts;
+
+	struct
+	{
+		VkPipeline model_pipeline;
+		VkPipeline fsquad_pipeline;
+	} pipelines;
 
 	Model model;
 	VkBuffer vbo;
@@ -251,8 +260,8 @@ struct DeviceRenderer
 		vkDestroyDescriptorPool(device.logical_device, descriptor_pool, nullptr);
 
 		vkFreeCommandBuffers(device.logical_device, command_pool, command_buffers.size(), command_buffers.data());
-		vkDestroyPipeline(device.logical_device, graphics_pipeline, nullptr);
-		vkDestroyPipelineLayout(device.logical_device, pipeline_layout, nullptr);
+		vkDestroyPipeline(device.logical_device, pipelines.model_pipeline, nullptr);
+		vkDestroyPipelineLayout(device.logical_device, pipeline_layouts.model_pipeline_layout, nullptr);
 		vkDestroyRenderPass(device.logical_device, renderpass.renderpass, nullptr);
 
 		for(uint32_t i = 0; i < swapchain.image_views.size(); i++)
@@ -311,13 +320,13 @@ struct DeviceRenderer
 	void setup_descriptor_set_layout()
 	{
 		VkDescriptorSetLayoutBinding ubo_layout_binding		= vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
-		VkDescriptorSetLayoutBinding server_framesampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
-		VkDescriptorSetLayoutBinding tex_sampler_layout_binding = vki::descriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		//VkDescriptorSetLayoutBinding server_framesampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding tex_sampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
 
 		// Put the descriptor set descriptions into a vector
 		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings;
 		descriptor_set_layout_bindings.push_back(ubo_layout_binding);
-		descriptor_set_layout_bindings.push_back(server_framesampler_layout_binding);
+		//descriptor_set_layout_bindings.push_back(server_framesampler_layout_binding);
 		descriptor_set_layout_bindings.push_back(tex_sampler_layout_binding);
 
 		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
@@ -362,14 +371,14 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			VkDescriptorImageInfo serverimage_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			//VkDescriptorImageInfo serverimage_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			VkDescriptorImageInfo teximage_info = vki::descriptorImageInfo(tex_sampler, texcolour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
 				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
-				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
-				vki::writeDescriptorSet(descriptor_sets[i], 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &teximage_info),
+				//vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
+				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &teximage_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -561,8 +570,12 @@ struct DeviceRenderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultclient.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultclient.spv");
+		// ========================================================================
+		//							SETUP FOR MODEL SHADER
+		// ========================================================================
+
+		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexmodelclient.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentmodelclient.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -583,7 +596,7 @@ struct DeviceRenderer
 		VkRect2D scissor								 = vki::rect2D({0, 0}, swapchain.swapchain_extent);
 		VkPipelineViewportStateCreateInfo viewport_state = vki::pipelineViewportStateCreateInfo(1, &viewport, 1, &scissor);
 
-		VkPipelineRasterizationStateCreateInfo rasterizer			= vki::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+		VkPipelineRasterizationStateCreateInfo rasterizer			= vki::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_BACK_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
 		VkPipelineMultisampleStateCreateInfo multisampling			= vki::pipelineMultisampleStateCreateInfo(VK_FALSE, VK_SAMPLE_COUNT_1_BIT);
 		VkPipelineColorBlendAttachmentState colour_blend_attachment = vki::pipelineColorBlendAttachmentState(VK_FALSE, VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT);
 		VkPipelineColorBlendStateCreateInfo colour_blending			= vki::pipelineColorBlendStateCreateInfo(1, &colour_blend_attachment);
@@ -592,7 +605,7 @@ struct DeviceRenderer
 
 		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layout, 0, nullptr);
 
-		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layout) != VK_SUCCESS)
+		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layouts.model_pipeline_layout) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create pipeline layout!");
 		}
@@ -607,12 +620,12 @@ struct DeviceRenderer
 		pipeline_ci.pMultisampleState			 = &multisampling;
 		pipeline_ci.pColorBlendState			 = &colour_blending;
 		pipeline_ci.pDepthStencilState			 = &depth_stencil;
-		pipeline_ci.layout						 = pipeline_layout;
+		pipeline_ci.layout						 = pipeline_layouts.model_pipeline_layout;
 		pipeline_ci.renderPass					 = renderpass.renderpass;
 		pipeline_ci.subpass						 = 0;
 		pipeline_ci.basePipelineHandle			 = VK_NULL_HANDLE;
 
-		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &graphics_pipeline) != VK_SUCCESS)
+		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.model_pipeline) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create graphics pipeline!");
 		}
@@ -676,7 +689,7 @@ struct DeviceRenderer
 
 			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model_pipeline);
 
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
@@ -684,10 +697,10 @@ struct DeviceRenderer
 			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
 			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
+			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model_pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
-			//vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			//vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 
 
 			vkCmdEndRenderPass(command_buffers[i]);
