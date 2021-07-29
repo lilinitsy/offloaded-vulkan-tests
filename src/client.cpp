@@ -96,14 +96,14 @@ struct DeviceRenderer
 
 	struct
 	{
-		VkPipelineLayout model_pipeline_layout;
-		VkPipelineLayout fsquad_pipeline_layout;
+		VkPipelineLayout model;
+		VkPipelineLayout fsquad;
 	} pipeline_layouts;
 
 	struct
 	{
-		VkPipeline model_pipeline;
-		VkPipeline fsquad_pipeline;
+		VkPipeline model;
+		VkPipeline fsquad;
 	} pipelines;
 
 	Model model;
@@ -128,9 +128,19 @@ struct DeviceRenderer
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
 
-	VkDescriptorSetLayout descriptor_set_layout;
+	struct
+	{
+		VkDescriptorSetLayout model;
+		VkDescriptorSetLayout fsquad;
+	} descriptor_set_layouts;
+
 	VkDescriptorPool descriptor_pool;
-	std::vector<VkDescriptorSet> descriptor_sets;
+
+	struct
+	{
+		std::vector<VkDescriptorSet> model;
+		std::vector<VkDescriptorSet> fsquad;
+	} descriptor_sets;
 
 	std::vector<VkSemaphore> image_available_semaphores;
 	std::vector<VkSemaphore> render_finished_semaphores;
@@ -201,7 +211,7 @@ struct DeviceRenderer
 		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
 		vkFreeMemory(device.logical_device, colour_attachment.memory, nullptr);
 
-		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
+		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.model, nullptr);
 
 		vkDestroyBuffer(device.logical_device, vbo, nullptr);
 		vkDestroyBuffer(device.logical_device, ibo, nullptr);
@@ -260,8 +270,8 @@ struct DeviceRenderer
 		vkDestroyDescriptorPool(device.logical_device, descriptor_pool, nullptr);
 
 		vkFreeCommandBuffers(device.logical_device, command_pool, command_buffers.size(), command_buffers.data());
-		vkDestroyPipeline(device.logical_device, pipelines.model_pipeline, nullptr);
-		vkDestroyPipelineLayout(device.logical_device, pipeline_layouts.model_pipeline_layout, nullptr);
+		vkDestroyPipeline(device.logical_device, pipelines.model, nullptr);
+		vkDestroyPipelineLayout(device.logical_device, pipeline_layouts.model, nullptr);
 		vkDestroyRenderPass(device.logical_device, renderpass.renderpass, nullptr);
 
 		for(uint32_t i = 0; i < swapchain.image_views.size(); i++)
@@ -319,34 +329,54 @@ struct DeviceRenderer
 
 	void setup_descriptor_set_layout()
 	{
-		VkDescriptorSetLayoutBinding ubo_layout_binding		= vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
-		//VkDescriptorSetLayoutBinding server_framesampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		// ========================================================================
+		//							SETUP FOR MODEL SHADER
+		// ========================================================================
+
+		VkDescriptorSetLayoutBinding ubo_layout_binding			= vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
 		VkDescriptorSetLayoutBinding tex_sampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
 
 		// Put the descriptor set descriptions into a vector
-		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings;
-		descriptor_set_layout_bindings.push_back(ubo_layout_binding);
-		//descriptor_set_layout_bindings.push_back(server_framesampler_layout_binding);
-		descriptor_set_layout_bindings.push_back(tex_sampler_layout_binding);
+		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings_model;
+		descriptor_set_layout_bindings_model.push_back(ubo_layout_binding);
+		descriptor_set_layout_bindings_model.push_back(tex_sampler_layout_binding);
 
-		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
-		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layout);
+		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings_model.size(), descriptor_set_layout_bindings_model.data());
+		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layouts.model);
 		if(descriptor_set_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create descriptor set layout");
 		}
+
+		// ========================================================================
+		//							SETUP FOR FSQUAD SHADER
+		// ========================================================================
+
+		VkDescriptorSetLayoutBinding server_framesampler_layout_binding = vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings_fsquad;
+		descriptor_set_layout_bindings_fsquad.push_back(server_framesampler_layout_binding);
+		descriptor_set_ci	  = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings_fsquad.size(), descriptor_set_layout_bindings_fsquad.data());
+		descriptor_set_create = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layouts.fsquad);
+		if(descriptor_set_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create descriptor set layout");
+		}
+	
 	}
+
 
 	void setup_descriptor_pool()
 	{
 		VkDescriptorPoolSize poolsize_ubo	  = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, swapchain.images.size());
 		VkDescriptorPoolSize poolsize_sampler = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * swapchain.images.size());
+		printf("poolsize_sampler: %d\n", poolsize_sampler.descriptorCount);
+
 
 		std::vector<VkDescriptorPoolSize> poolsizes;
 		poolsizes.push_back(poolsize_ubo);
 		poolsizes.push_back(poolsize_sampler);
 
-		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
+		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(2 * swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
 		VkResult descriptor_pool_create	   = vkCreateDescriptorPool(device.logical_device, &pool_ci, nullptr, &descriptor_pool);
 		if(descriptor_pool_create != VK_SUCCESS)
 		{
@@ -356,29 +386,55 @@ struct DeviceRenderer
 
 	void setup_descriptor_sets()
 	{
-		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), descriptor_set_layout);
-		descriptor_sets.resize(swapchain.images.size());
+		// ========================================================================
+		//							SETUP FOR MODEL SHADER
+		// ========================================================================
+
+		std::vector<VkDescriptorSetLayout> model_layouts(swapchain.images.size(), descriptor_set_layouts.model);
+		descriptor_sets.model.resize(swapchain.images.size());
 
 		// Allocate descriptor sets
-		VkDescriptorSetAllocateInfo set_ai	 = vki::descriptorSetAllocateInfo(descriptor_pool, swapchain.images.size(), layouts.data());
-		VkResult descriptor_set_alloc_result = vkAllocateDescriptorSets(device.logical_device, &set_ai, descriptor_sets.data());
+		VkDescriptorSetAllocateInfo set_ai	 = vki::descriptorSetAllocateInfo(descriptor_pool, swapchain.images.size(), model_layouts.data());
+		VkResult descriptor_set_alloc_result = vkAllocateDescriptorSets(device.logical_device, &set_ai, descriptor_sets.model.data());
 		if(descriptor_set_alloc_result != VK_SUCCESS)
 		{
-			throw std::runtime_error("Could not allocate descriptor set");
+			throw std::runtime_error("Could not allocate model descriptor set");
 		}
 
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			//VkDescriptorImageInfo serverimage_info   = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorBufferInfo buffer_info	= vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
 			VkDescriptorImageInfo teximage_info = vki::descriptorImageInfo(tex_sampler, texcolour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
-				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
-				//vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
-				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &teximage_info),
+				vki::writeDescriptorSet(descriptor_sets.model[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
+				vki::writeDescriptorSet(descriptor_sets.model[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &teximage_info),
+			};
+
+			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+		}
+
+		// ========================================================================
+		//							SETUP FOR FSQUAD SHADER
+		// ========================================================================
+		std::vector<VkDescriptorSetLayout> fsquad_layouts(swapchain.images.size(), descriptor_set_layouts.fsquad);
+		descriptor_sets.fsquad.resize(swapchain.images.size());
+
+		set_ai						= vki::descriptorSetAllocateInfo(descriptor_pool, swapchain.images.size(), fsquad_layouts.data());
+		descriptor_set_alloc_result = vkAllocateDescriptorSets(device.logical_device, &set_ai, descriptor_sets.fsquad.data());
+		if(descriptor_set_alloc_result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not allocate fsquad descriptor set");
+		}
+
+		for(uint32_t i = 0; i < swapchain.images.size(); i++)
+		{
+			VkDescriptorImageInfo serverimage_info = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
+			write_descriptor_sets = {
+				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -459,7 +515,7 @@ struct DeviceRenderer
 
 		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
 		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
-	
+
 		texcolour_attachment.image_view = create_image_view(device.logical_device, texcolour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		VkPhysicalDeviceProperties properties;
@@ -530,7 +586,6 @@ struct DeviceRenderer
 		{
 			throw std::runtime_error("Could not create texture sampler");
 		}
-
 	}
 
 
@@ -603,9 +658,9 @@ struct DeviceRenderer
 		VkPipelineDepthStencilStateCreateInfo depth_stencil			= vki::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE, {}, {}, 0.0f, 1.0f);
 
 
-		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layout, 0, nullptr);
+		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layouts.model, 0, nullptr);
 
-		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layouts.model_pipeline_layout) != VK_SUCCESS)
+		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layouts.model) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create pipeline layout!");
 		}
@@ -620,12 +675,12 @@ struct DeviceRenderer
 		pipeline_ci.pMultisampleState			 = &multisampling;
 		pipeline_ci.pColorBlendState			 = &colour_blending;
 		pipeline_ci.pDepthStencilState			 = &depth_stencil;
-		pipeline_ci.layout						 = pipeline_layouts.model_pipeline_layout;
+		pipeline_ci.layout						 = pipeline_layouts.model;
 		pipeline_ci.renderPass					 = renderpass.renderpass;
 		pipeline_ci.subpass						 = 0;
 		pipeline_ci.basePipelineHandle			 = VK_NULL_HANDLE;
 
-		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.model_pipeline) != VK_SUCCESS)
+		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.model) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create graphics pipeline!");
 		}
@@ -689,7 +744,7 @@ struct DeviceRenderer
 
 			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model_pipeline);
+			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
 
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
@@ -697,7 +752,7 @@ struct DeviceRenderer
 			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
 			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model_pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
+			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
 
 			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 			//vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
@@ -742,13 +797,13 @@ struct DeviceRenderer
 		gettimeofday(&timer_start, nullptr);
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-		
+
 		//if(numframes % 100 == 0)
 		//{
-			receive_swapchain_image();
-			printf("numframe: %d\n", numframes);
+		receive_swapchain_image();
+		printf("numframe: %d\n", numframes);
 		//}
-		
+
 
 
 
