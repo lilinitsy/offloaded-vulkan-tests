@@ -361,7 +361,6 @@ struct DeviceRenderer
 		{
 			throw std::runtime_error("Could not create descriptor set layout");
 		}
-	
 	}
 
 
@@ -647,6 +646,7 @@ struct DeviceRenderer
 		VkPipelineVertexInputStateCreateInfo vertex_input_info = vki::pipelineVertexInputStateCreateInfo(1, &binding_desc, attribute_desc.size(), attribute_desc.data());
 		VkPipelineInputAssemblyStateCreateInfo input_assembly  = vki::pipelineInputAssemblyStateCreateInfo(VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST, VK_FALSE);
 
+		// TODO: Might need to think about where to have the quad's viewport
 		VkViewport viewport								 = vki::viewport(0.0f, 0.0f, (float) swapchain.swapchain_extent.width, (float) swapchain.swapchain_extent.height, 0.0f, 1.0f);
 		VkRect2D scissor								 = vki::rect2D({0, 0}, swapchain.swapchain_extent);
 		VkPipelineViewportStateCreateInfo viewport_state = vki::pipelineViewportStateCreateInfo(1, &viewport, 1, &scissor);
@@ -658,9 +658,9 @@ struct DeviceRenderer
 		VkPipelineDepthStencilStateCreateInfo depth_stencil			= vki::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE, {}, {}, 0.0f, 1.0f);
 
 
-		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layouts.model, 0, nullptr);
+		VkPipelineLayoutCreateInfo pipeline_layout_info_model = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layouts.model, 0, nullptr);
 
-		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layouts.model) != VK_SUCCESS)
+		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info_model, nullptr, &pipeline_layouts.model) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create pipeline layout!");
 		}
@@ -683,6 +683,41 @@ struct DeviceRenderer
 		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.model) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create graphics pipeline!");
+		}
+
+
+		// ========================================================================
+		//							SETUP FOR MODEL SHADER
+		// ========================================================================
+
+		vertex_shader_code		   = parse_shader_file("shaders/vertexfsquadclient.spv");
+		fragment_shader_code	   = parse_shader_file("shaders/fragmentfsquadclient.spv");
+		vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
+		fragment_shader_module	   = setup_shader_module(fragment_shader_code, device);
+		vertex_shader_stage_info   = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertex_shader_module, "main");
+		fragment_shader_stage_info = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader_module, "main");
+		shader_stages[0]		   = vertex_shader_stage_info;
+		shader_stages[1]		   = fragment_shader_stage_info;
+
+		VkPipelineVertexInputStateCreateInfo empty_vertex_input_info = {};
+		empty_vertex_input_info.sType								 = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+
+		// Cull front bit for FS quad
+		rasterizer											   = vki::pipelineRasterizationStateCreateInfo(VK_POLYGON_MODE_FILL, VK_CULL_MODE_FRONT_BIT, VK_FRONT_FACE_COUNTER_CLOCKWISE);
+		VkPipelineLayoutCreateInfo pipeline_layout_info_fsquad = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layouts.fsquad, 0, nullptr);
+
+		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info_fsquad, nullptr, &pipeline_layouts.fsquad) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create pipeline layout!");
+		}
+
+		// Modify the current graphics pipeline ci
+		pipeline_ci.pVertexInputState = &empty_vertex_input_info;
+		pipeline_ci.layout			  = pipeline_layouts.fsquad;
+
+		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.fsquad) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Failed to create graphics pipeline!");
 		}
 
 		vkDestroyShaderModule(device.logical_device, fragment_shader_module, nullptr);
