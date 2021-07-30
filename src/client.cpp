@@ -169,7 +169,7 @@ struct DeviceRenderer
 		device									  = VulkanDevice(instance, surface);
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
-		renderpass								  = VulkanRenderpass(device, swapchain);
+		renderpass								  = VulkanRenderpass(device, swapchain, false);
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
@@ -548,7 +548,7 @@ struct DeviceRenderer
 					 1, 1,
 					 VK_SAMPLE_COUNT_1_BIT,
 					 VK_IMAGE_TILING_OPTIMAL,
-					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT,
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -714,6 +714,10 @@ struct DeviceRenderer
 		// Modify the current graphics pipeline ci
 		pipeline_ci.pVertexInputState = &empty_vertex_input_info;
 		pipeline_ci.layout			  = pipeline_layouts.fsquad;
+		pipeline_ci.subpass = 1; // Pipeline used in second subpass
+
+		colour_blending.attachmentCount = 1;
+		depth_stencil.depthWriteEnable = VK_FALSE;
 
 		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.fsquad) != VK_SUCCESS)
 		{
@@ -724,13 +728,18 @@ struct DeviceRenderer
 		vkDestroyShaderModule(device.logical_device, vertex_shader_module, nullptr);
 	}
 
+
+	// TODO: Try creating different attachments
+	// Also, colour_attachment may not be the right... attachment. That maybe needs to be renamed to samplercolour_attachment,
+	// since it'll be used for the server frame's sampler, not an input attachment.
+	// Blegh
 	void setup_framebuffers()
 	{
 		swapchain.framebuffers.resize(swapchain.image_views.size());
 
 		for(size_t i = 0; i < swapchain.image_views.size(); i++)
 		{
-			std::vector<VkImageView> attachments = {swapchain.image_views[i], depth_attachment.image_view};
+			std::vector<VkImageView> attachments = {swapchain.image_views[i], colour_attachment.image_view, depth_attachment.image_view};
 			VkFramebufferCreateInfo fbo_ci		 = vki::framebufferCreateInfo(renderpass.renderpass, attachments.size(), attachments.data(), swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
 
 			if(vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &swapchain.framebuffers[i]) != VK_SUCCESS)
@@ -758,6 +767,12 @@ struct DeviceRenderer
 
 		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, command_buffers.size());
 
+		VkClearValue clear_values[3];
+		clear_values[0].color		 = {0.0f, 0.0f, 0.0f, 1.0f}; // might want to change alpha values to 0's
+		clear_values[1].color		 = {0.0f, 0.0f, 0.0f, 1.0f}; // might want to change alpha values to 0's
+		clear_values[2].depthStencil = {1.0f, 0};
+
+
 		if(vkAllocateCommandBuffers(device.logical_device, &cmdbuf_ai, command_buffers.data()) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to allocate command buffers!");
@@ -772,30 +787,35 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
 
-			VkClearValue clear_values[2];
-			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
-			clear_values[1].depthStencil		= {1.0f, 0};
-			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass, swapchain.framebuffers[i], {0, 0}, swapchain.swapchain_extent, 2, clear_values);
-
-			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
-
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
+			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass,
+																		   swapchain.framebuffers[i],
+																		   {0, 0},
+																		   swapchain.swapchain_extent,
+																		   3, clear_values);
 
 			VkBuffer vertex_buffers[] = {vbo};
 			VkDeviceSize offsets[]	  = {0};
 
-			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
+			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
+			
+			// First subpass, which does the attachments
+			{
+				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
+				vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+				vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
+				vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			}
 
-			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
-			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
-
-
+			// Second subpass, which will render a fullscreen quad
+			{
+				vkCmdNextSubpass(command_buffers[i], VK_SUBPASS_CONTENTS_INLINE);
+				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
+				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
+				vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+			}
+			
 			vkCmdEndRenderPass(command_buffers[i]);
 
 			if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS)
@@ -839,7 +859,7 @@ struct DeviceRenderer
 		//if(numframes % 100 == 0)
 		//{
 		receive_swapchain_image();
-		printf("numframe: %d\n", numframes);
+		//printf("numframe: %d\n", numframes);
 		//}
 
 
@@ -1026,7 +1046,7 @@ struct DeviceRenderer
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain.setup_swapchain(swapchain_support, surface, device, window);
 		swapchain.setup_image_views(device.logical_device);
-		renderpass.setup_renderpass(device, swapchain);
+		renderpass.setup_client_renderpass(device, swapchain);
 		setup_graphics_pipeline();
 		setup_framebuffers();
 		initialize_ubos();

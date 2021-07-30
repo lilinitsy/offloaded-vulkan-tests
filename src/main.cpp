@@ -177,7 +177,7 @@ struct HostRenderer
 		device									  = VulkanDevice(instance, surface);
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
-		renderpass								  = VulkanRenderpass(device, swapchain);
+		renderpass								  = VulkanRenderpass(device, swapchain, true);
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
