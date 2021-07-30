@@ -790,7 +790,10 @@ struct DeviceRenderer
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
 
 			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-			//vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+
+			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
+			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
+			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 
 
 			vkCmdEndRenderPass(command_buffers[i]);
