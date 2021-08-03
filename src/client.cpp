@@ -93,6 +93,7 @@ struct DeviceRenderer
 	VulkanDevice device;
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
+	VulkanRenderpassClient model_renderpass;
 
 	struct
 	{
@@ -114,8 +115,13 @@ struct DeviceRenderer
 	VkDeviceMemory vbo_mem;
 	VkDeviceMemory ibo_mem;
 
-	VulkanAttachment colour_attachment;
+	VulkanAttachment local_rendered_attachment;
+	VkSampler local_rendered_sampler;
+	VkFramebuffer offscreen_fbo;
+
+	VulkanAttachment server_colour_attachment;
 	VkSampler server_frame_sampler;
+
 	VulkanAttachment depth_attachment;
 
 	VulkanAttachment texcolour_attachment;
@@ -170,11 +176,13 @@ struct DeviceRenderer
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
 		renderpass								  = VulkanRenderpass(device, swapchain);
+		model_renderpass						  = VulkanRenderpassClient(device, swapchain);
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
 		setup_depth();
 		setup_framebuffers();
+		setup_localframe_sampler();
 		setup_serverframe_sampler();
 		setup_texture_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
@@ -206,10 +214,10 @@ struct DeviceRenderer
 	void cleanup()
 	{
 		cleanup_swapchain();
-		vkDestroyImageView(device.logical_device, colour_attachment.image_view, nullptr);
+		vkDestroyImageView(device.logical_device, server_colour_attachment.image_view, nullptr);
 		vkDestroySampler(device.logical_device, server_frame_sampler, nullptr);
-		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
-		vkFreeMemory(device.logical_device, colour_attachment.memory, nullptr);
+		vkDestroyImage(device.logical_device, server_colour_attachment.image, nullptr);
+		vkFreeMemory(device.logical_device, server_colour_attachment.memory, nullptr);
 
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.model, nullptr);
 
@@ -352,9 +360,13 @@ struct DeviceRenderer
 		//							SETUP FOR FSQUAD SHADER
 		// ========================================================================
 
-		VkDescriptorSetLayoutBinding server_framesampler_layout_binding = vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding server_framesampler_layout_binding	   = vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding local_rendered_sampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+
 		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings_fsquad;
 		descriptor_set_layout_bindings_fsquad.push_back(server_framesampler_layout_binding);
+		descriptor_set_layout_bindings_fsquad.push_back(local_rendered_sampler_layout_binding);
+
 		descriptor_set_ci	  = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings_fsquad.size(), descriptor_set_layout_bindings_fsquad.data());
 		descriptor_set_create = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layouts.fsquad);
 		if(descriptor_set_create != VK_SUCCESS)
@@ -430,10 +442,13 @@ struct DeviceRenderer
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorImageInfo serverimage_info = vki::descriptorImageInfo(server_frame_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo serverimage_info		   = vki::descriptorImageInfo(server_frame_sampler, server_colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo local_renderedimage_info = vki::descriptorImageInfo(local_rendered_sampler, local_rendered_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
 				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
+				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &local_renderedimage_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -515,7 +530,8 @@ struct DeviceRenderer
 		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
 		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
 
-		texcolour_attachment.image_view = create_image_view(device.logical_device, texcolour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		texcolour_attachment.image_view = create_image_view(device.logical_device, texcolour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, true);
+		std::cout << "texcolour imageview: " << texcolour_attachment.image_view << std::endl;
 
 		VkPhysicalDeviceProperties properties;
 		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
@@ -525,6 +541,50 @@ struct DeviceRenderer
 																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
 
 		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &tex_sampler);
+		if(sampler_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create texture sampler");
+		}
+	}
+
+
+	void setup_localframe_sampler()
+	{
+		VkExtent3D extent3d = {
+			.width	= (uint32_t) CLIENTWIDTH,
+			.height = (uint32_t) CLIENTHEIGHT,
+			.depth	= 1,
+		};
+
+		// Make colour attachment image
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 extent3d,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 local_rendered_attachment.image,
+					 local_rendered_attachment.memory);
+
+		// Create colour attachment image view
+		local_rendered_attachment.image_view = create_image_view(device.logical_device, local_rendered_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, true);
+		std::cout << "local_rendered attachment image_view: " << local_rendered_attachment.image_view << std::endl;
+
+
+		// Create the local rendered frame's sampler to be used as input for the other renderpass
+		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR,
+																VK_FILTER_LINEAR,
+																VK_SAMPLER_MIPMAP_MODE_LINEAR,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																0.0f, true, 1.0f, VK_FALSE, VK_COMPARE_OP_ALWAYS,
+																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
+
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &local_rendered_sampler);
 		if(sampler_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create texture sampler");
@@ -552,25 +612,25 @@ struct DeviceRenderer
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-					 colour_attachment.image,
-					 colour_attachment.memory);
+					 server_colour_attachment.image,
+					 server_colour_attachment.memory);
 
 		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
 		transition_image_layout(device, command_pool,
-								colour_attachment.image,
+								server_colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
 		// Now transition to shader read only optimal
 		transition_image_layout(device, command_pool,
-								colour_attachment.image,
+								server_colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		// Create image view for the colour attachment
-		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		server_colour_attachment.image_view = create_image_view(device.logical_device, server_colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		// Create the sampler
 		VkPhysicalDeviceProperties properties;
@@ -687,7 +747,7 @@ struct DeviceRenderer
 
 
 		// ========================================================================
-		//							SETUP FOR MODEL SHADER
+		//							SETUP FOR FSQUAD SHADER
 		// ========================================================================
 
 		vertex_shader_code		   = parse_shader_file("shaders/vertexfsquadclient.spv");
@@ -726,6 +786,10 @@ struct DeviceRenderer
 
 	void setup_framebuffers()
 	{
+		// ========================================================================
+		//							SETUP FOR FSQUAD SHADER
+		// ========================================================================
+
 		swapchain.framebuffers.resize(swapchain.image_views.size());
 
 		for(size_t i = 0; i < swapchain.image_views.size(); i++)
@@ -735,8 +799,23 @@ struct DeviceRenderer
 
 			if(vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &swapchain.framebuffers[i]) != VK_SUCCESS)
 			{
-				throw std::runtime_error("failed to create framebuffer!");
+				throw std::runtime_error("failed to create swapchain framebuffer!");
 			}
+		}
+
+		// ========================================================================
+		//							SETUP FOR MODEL SHADER
+		// ========================================================================
+		VkImageView attachments[2];
+		attachments[0] = local_rendered_attachment.image_view;
+		attachments[1] = depth_attachment.image_view;
+
+		VkFramebufferCreateInfo fbo_ci = vki::framebufferCreateInfo(model_renderpass.renderpass, 2, attachments, CLIENTWIDTH, CLIENTHEIGHT, 1);
+		VkResult fbo_create_result	   = vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &offscreen_fbo);
+
+		if(fbo_create_result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen fbo");
 		}
 	}
 
@@ -772,24 +851,51 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
 
-			VkClearValue clear_values[2];
-			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
-			clear_values[1].depthStencil		= {1.0f, 0};
-			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass, swapchain.framebuffers[i], {0, 0}, swapchain.swapchain_extent, 2, clear_values);
+			// First pass: The offscreen rendering
+			{
+				VkClearValue clear_values[2];
+				clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
+				clear_values[1].depthStencil		= {1.0f, 0};
+				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(model_renderpass.renderpass,
+																			   offscreen_fbo,
+																			   {0, 0},
+																			   swapchain.swapchain_extent,
+																			   2, clear_values);
 
-			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
+				vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
+				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
 
-			VkBuffer vertex_buffers[] = {vbo};
-			VkDeviceSize offsets[]	  = {0};
+				VkBuffer vertex_buffers[] = {vbo};
+				VkDeviceSize offsets[]	  = {0};
 
-			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+				vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
+				vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
+				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
 
-			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+				vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			}
+
+			// Second renderpass: Fullscreen quad draw
+			{
+				VkClearValue clear_values[2];
+				clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
+				clear_values[1].depthStencil		= {1.0f, 0};
+
+				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass,
+					swapchain.framebuffers[i],
+					{0, 0},
+					swapchain.swapchain_extent,
+					2, clear_values);
+
+				vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
+
+				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
+				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
+				vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+			}
+
 
 			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
@@ -839,7 +945,7 @@ struct DeviceRenderer
 		//if(numframes % 100 == 0)
 		//{
 		receive_swapchain_image();
-		printf("numframe: %d\n", numframes);
+		printf("numframe: %lu\n", numframes);
 		//}
 
 
@@ -960,7 +1066,7 @@ struct DeviceRenderer
 
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								colour_attachment.image,
+								server_colour_attachment.image,
 								VK_ACCESS_MEMORY_READ_BIT,				  // src access_mask
 								VK_ACCESS_TRANSFER_WRITE_BIT,			  // dst access_mask
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // current layout
@@ -988,13 +1094,13 @@ struct DeviceRenderer
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
 							   image_buffer,
-							   colour_attachment.image,
+							   server_colour_attachment.image,
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
 
 		// Transition swapchain image back
 		transition_image_layout(device, command_pool, copy_cmdbuf,
-								colour_attachment.image,
+								server_colour_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,			  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,				  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // current layout
