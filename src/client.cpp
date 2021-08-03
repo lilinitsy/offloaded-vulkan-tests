@@ -93,7 +93,6 @@ struct DeviceRenderer
 	VulkanDevice device;
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
-	VulkanRenderpassClient model_renderpass;
 
 	struct
 	{
@@ -114,10 +113,6 @@ struct DeviceRenderer
 	std::vector<VkDeviceMemory> ubos_mem;
 	VkDeviceMemory vbo_mem;
 	VkDeviceMemory ibo_mem;
-
-	VulkanAttachment local_rendered_attachment;
-	VkSampler local_rendered_sampler;
-	VkFramebuffer offscreen_fbo;
 
 	VulkanAttachment server_colour_attachment;
 	VkSampler server_frame_sampler;
@@ -148,6 +143,18 @@ struct DeviceRenderer
 		std::vector<VkDescriptorSet> fsquad;
 	} descriptor_sets;
 
+
+	// Modeled from sascha's radialblur
+	struct
+	{
+		VkFramebuffer framebuffer;
+		VulkanAttachment colour_attachment;
+		VulkanAttachment depth_attachment;
+		VkRenderPass renderpass;
+		VkSampler sampler;
+	} offscreen_pass;
+
+
 	std::vector<VkSemaphore> image_available_semaphores;
 	std::vector<VkSemaphore> render_finished_semaphores;
 	std::vector<VkFence> in_flight_fences;
@@ -176,13 +183,12 @@ struct DeviceRenderer
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
 		renderpass								  = VulkanRenderpass(device, swapchain);
-		model_renderpass						  = VulkanRenderpassClient(device, swapchain);
+		setup_offscreen();
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
 		setup_depth();
 		setup_framebuffers();
-		setup_localframe_sampler();
 		setup_serverframe_sampler();
 		setup_texture_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
@@ -335,6 +341,130 @@ struct DeviceRenderer
 	}
 
 
+	void setup_offscreen()
+	{
+		// Depth attachment
+		std::vector<VkFormat> formats = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+		VkFormat depth_format		  = device.find_format(formats, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
+
+		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, offscreen_pass.depth_attachment.image, offscreen_pass.depth_attachment.memory);
+		offscreen_pass.depth_attachment.image_view = create_image_view(device.logical_device, offscreen_pass.depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+		// Colour attachment
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 extent,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 offscreen_pass.colour_attachment.image,
+					 offscreen_pass.colour_attachment.memory);
+
+		// Colour attachment image view
+		offscreen_pass.colour_attachment.image_view = create_image_view(device.logical_device, offscreen_pass.colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+
+		// Sampler for offscreen
+		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR,
+																VK_FILTER_LINEAR,
+																VK_SAMPLER_MIPMAP_MODE_LINEAR,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																0.0f, 1.0f, 0.0f, 1.0f,
+																VK_BORDER_COLOR_INT_OPAQUE_BLACK);
+
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &offscreen_pass.sampler);
+		if(sampler_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen sampler");
+		}
+
+		// Renderpass creation
+		std::array<VkAttachmentDescription, 2> attachment_descriptions = {};
+		attachment_descriptions[0]									   = {
+			.format			= VK_FORMAT_R8G8B8A8_SRGB,
+			.samples		= VK_SAMPLE_COUNT_1_BIT,
+			.loadOp			= VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp		= VK_ATTACHMENT_STORE_OP_STORE,
+			.stencilLoadOp	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout	= VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		};
+		attachment_descriptions[1] = {
+			.format			= depth_format,
+			.samples		= VK_SAMPLE_COUNT_1_BIT,
+			.loadOp			= VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp		= VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.stencilLoadOp	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout	= VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		};
+
+		VkAttachmentReference colour_ref		 = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+		VkAttachmentReference depth_ref			 = {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+		VkSubpassDescription subpass_description = {
+			.pipelineBindPoint		 = VK_PIPELINE_BIND_POINT_GRAPHICS,
+			.colorAttachmentCount	 = 1,
+			.pColorAttachments		 = &colour_ref,
+			.pDepthStencilAttachment = &depth_ref,
+		};
+
+		std::array<VkSubpassDependency, 2> dependencies;
+		dependencies[0] = {
+			.srcSubpass		 = VK_SUBPASS_EXTERNAL,
+			.dstSubpass		 = 0,
+			.srcStageMask	 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			.dstStageMask	 = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.srcAccessMask	 = VK_ACCESS_SHADER_READ_BIT,
+			.dstAccessMask	 = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+		};
+		dependencies[1] = {
+			.srcSubpass		 = 0,
+			.dstSubpass		 = VK_SUBPASS_EXTERNAL,
+			.srcStageMask	 = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.dstStageMask	 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			.srcAccessMask	 = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dstAccessMask	 = VK_ACCESS_SHADER_READ_BIT,
+			.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+		};
+
+		// Renderpass creation
+		VkRenderPassCreateInfo renderpass_ci = vki::renderPassCreateInfo();
+		renderpass_ci.attachmentCount		 = attachment_descriptions.size();
+		renderpass_ci.pAttachments			 = attachment_descriptions.data();
+		renderpass_ci.subpassCount			 = 1;
+		renderpass_ci.pSubpasses			 = &subpass_description;
+		renderpass_ci.dependencyCount		 = dependencies.size();
+		renderpass_ci.pDependencies			 = dependencies.data();
+
+		VkResult renderpass_create = vkCreateRenderPass(device.logical_device, &renderpass_ci, nullptr, &offscreen_pass.renderpass);
+		if(renderpass_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen's renderpass");
+		}
+
+		VkImageView attachments[2];
+		attachments[0] = offscreen_pass.colour_attachment.image_view;
+		attachments[1] = offscreen_pass.depth_attachment.image_view;
+
+		VkFramebufferCreateInfo fbo_ci = vki::framebufferCreateInfo(offscreen_pass.renderpass, 2, attachments, swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
+		VkResult fbo_create			   = vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &offscreen_pass.framebuffer);
+		if(fbo_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen framebuffer");
+		}
+	}
+
+
 	void setup_descriptor_set_layout()
 	{
 		// ========================================================================
@@ -440,10 +570,12 @@ struct DeviceRenderer
 			throw std::runtime_error("Could not allocate fsquad descriptor set");
 		}
 
+		// Val layers are saying one of these samplers is invalid
+		// probably offscreen_pass.sampler
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorImageInfo serverimage_info		   = vki::descriptorImageInfo(server_frame_sampler, server_colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-			VkDescriptorImageInfo local_renderedimage_info = vki::descriptorImageInfo(local_rendered_sampler, local_rendered_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo local_renderedimage_info = vki::descriptorImageInfo(offscreen_pass.sampler, offscreen_pass.colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
@@ -457,12 +589,6 @@ struct DeviceRenderer
 
 	void setup_depth()
 	{
-		std::vector<VkFormat> formats = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
-		VkFormat depth_format		  = device.find_format(formats, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
-		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
-
-		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_attachment.image, depth_attachment.memory);
-		depth_attachment.image_view = create_image_view(device.logical_device, depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
 
@@ -541,50 +667,6 @@ struct DeviceRenderer
 																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
 
 		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &tex_sampler);
-		if(sampler_create != VK_SUCCESS)
-		{
-			throw std::runtime_error("Could not create texture sampler");
-		}
-	}
-
-
-	void setup_localframe_sampler()
-	{
-		VkExtent3D extent3d = {
-			.width	= (uint32_t) CLIENTWIDTH,
-			.height = (uint32_t) CLIENTHEIGHT,
-			.depth	= 1,
-		};
-
-		// Make colour attachment image
-		create_image(device, 0,
-					 VK_IMAGE_TYPE_2D,
-					 VK_FORMAT_R8G8B8A8_SRGB,
-					 extent3d,
-					 1, 1,
-					 VK_SAMPLE_COUNT_1_BIT,
-					 VK_IMAGE_TILING_OPTIMAL,
-					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
-					 VK_SHARING_MODE_EXCLUSIVE,
-					 VK_IMAGE_LAYOUT_UNDEFINED,
-					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-					 local_rendered_attachment.image,
-					 local_rendered_attachment.memory);
-
-		// Create colour attachment image view
-		local_rendered_attachment.image_view = create_image_view(device.logical_device, local_rendered_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, true);
-		std::cout << "local_rendered attachment image_view: " << local_rendered_attachment.image_view << std::endl;
-
-
-		// Create the local rendered frame's sampler to be used as input for the other renderpass
-		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR,
-																VK_FILTER_LINEAR,
-																VK_SAMPLER_MIPMAP_MODE_LINEAR,
-																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
-																0.0f, true, 1.0f, VK_FALSE, VK_COMPARE_OP_ALWAYS,
-																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
-
-		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &local_rendered_sampler);
 		if(sampler_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create texture sampler");
@@ -736,7 +818,7 @@ struct DeviceRenderer
 		pipeline_ci.pColorBlendState			 = &colour_blending;
 		pipeline_ci.pDepthStencilState			 = &depth_stencil;
 		pipeline_ci.layout						 = pipeline_layouts.model;
-		pipeline_ci.renderPass					 = renderpass.renderpass;
+		pipeline_ci.renderPass					 = offscreen_pass.renderpass;
 		pipeline_ci.subpass						 = 0;
 		pipeline_ci.basePipelineHandle			 = VK_NULL_HANDLE;
 
@@ -774,6 +856,7 @@ struct DeviceRenderer
 		// Modify the current graphics pipeline ci
 		pipeline_ci.pVertexInputState = &empty_vertex_input_info;
 		pipeline_ci.layout			  = pipeline_layouts.fsquad;
+		pipeline_ci.renderPass		  = renderpass.renderpass;
 
 		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &pipelines.fsquad) != VK_SUCCESS)
 		{
@@ -794,7 +877,7 @@ struct DeviceRenderer
 
 		for(size_t i = 0; i < swapchain.image_views.size(); i++)
 		{
-			std::vector<VkImageView> attachments = {swapchain.image_views[i], depth_attachment.image_view};
+			std::vector<VkImageView> attachments = {swapchain.image_views[i], offscreen_pass.depth_attachment.image_view};
 			VkFramebufferCreateInfo fbo_ci		 = vki::framebufferCreateInfo(renderpass.renderpass, attachments.size(), attachments.data(), swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
 
 			if(vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &swapchain.framebuffers[i]) != VK_SUCCESS)
@@ -806,17 +889,6 @@ struct DeviceRenderer
 		// ========================================================================
 		//							SETUP FOR MODEL SHADER
 		// ========================================================================
-		VkImageView attachments[2];
-		attachments[0] = local_rendered_attachment.image_view;
-		attachments[1] = depth_attachment.image_view;
-
-		VkFramebufferCreateInfo fbo_ci = vki::framebufferCreateInfo(model_renderpass.renderpass, 2, attachments, CLIENTWIDTH, CLIENTHEIGHT, 1);
-		VkResult fbo_create_result	   = vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &offscreen_fbo);
-
-		if(fbo_create_result != VK_SUCCESS)
-		{
-			throw std::runtime_error("Could not create offscreen fbo");
-		}
 	}
 
 
@@ -856,8 +928,8 @@ struct DeviceRenderer
 				VkClearValue clear_values[2];
 				clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
 				clear_values[1].depthStencil		= {1.0f, 0};
-				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(model_renderpass.renderpass,
-																			   offscreen_fbo,
+				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(offscreen_pass.renderpass,
+																			   offscreen_pass.framebuffer,
 																			   {0, 0},
 																			   swapchain.swapchain_extent,
 																			   2, clear_values);
@@ -875,34 +947,30 @@ struct DeviceRenderer
 				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
 
 				vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+
+				vkCmdEndRenderPass(command_buffers[i]);
 			}
 
 			// Second renderpass: Fullscreen quad draw
 			{
 				VkClearValue clear_values[2];
-				clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
-				clear_values[1].depthStencil		= {1.0f, 0};
+				clear_values[0].color		 = {0.0f, 0.0f, 0.0f, 1.0f};
+				clear_values[1].depthStencil = {1.0f, 0};
 
 				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass,
-					swapchain.framebuffers[i],
-					{0, 0},
-					swapchain.swapchain_extent,
-					2, clear_values);
+																			   swapchain.framebuffers[i],
+																			   {0, 0},
+																			   swapchain.swapchain_extent,
+																			   2, clear_values);
 
 				vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
 				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
 				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
 				vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
+				vkCmdEndRenderPass(command_buffers[i]);
 			}
 
-
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.fsquad);
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.fsquad, 0, 1, &descriptor_sets.fsquad[i], 0, nullptr);
-			vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
-
-
-			vkCmdEndRenderPass(command_buffers[i]);
 
 			if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS)
 			{
