@@ -37,8 +37,8 @@
 #include "vk_swapchain.h"
 #include "vk_swapchain_support.h"
 
-std::string MODEL_PATH	 = "../models/laurenscan/Model.obj";
-std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
+std::string MODEL_PATH	 = "../models/labdesk/labdesk.obj";
+std::string TEXTURE_PATH = "../models/labdesk/labdesk.jpg";
 
 
 #define PORT 1234
