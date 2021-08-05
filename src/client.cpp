@@ -32,7 +32,7 @@
 #include "vk_image.h"
 #include "vk_models.h"
 #include "vk_queuefamilies.h"
-#include "vk_renderpass.h"
+#include "vk_renderpass.h"	
 #include "vk_shaders.h"
 #include "vk_swapchain.h"
 #include "vk_swapchain_support.h"
@@ -490,10 +490,12 @@ struct DeviceRenderer
 		//							SETUP FOR FSQUAD SHADER
 		// ========================================================================
 
-		VkDescriptorSetLayoutBinding server_framesampler_layout_binding	   = vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
-		VkDescriptorSetLayoutBinding local_rendered_sampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		// Use the ubo_layout_binding and push it on as well
+		VkDescriptorSetLayoutBinding server_framesampler_layout_binding	   = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding local_rendered_sampler_layout_binding = vki::descriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
 
 		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings_fsquad;
+		descriptor_set_layout_bindings_fsquad.push_back(ubo_layout_binding);
 		descriptor_set_layout_bindings_fsquad.push_back(server_framesampler_layout_binding);
 		descriptor_set_layout_bindings_fsquad.push_back(local_rendered_sampler_layout_binding);
 
@@ -574,13 +576,15 @@ struct DeviceRenderer
 		// probably offscreen_pass.sampler
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
+			VkDescriptorBufferInfo buffer_info	= vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
 			VkDescriptorImageInfo serverimage_info		   = vki::descriptorImageInfo(server_frame_sampler, server_colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			VkDescriptorImageInfo local_renderedimage_info = vki::descriptorImageInfo(offscreen_pass.sampler, offscreen_pass.colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
-				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
-				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &local_renderedimage_info),
+				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
+				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &serverimage_info),
+				vki::writeDescriptorSet(descriptor_sets.fsquad[i], 2, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &local_renderedimage_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -750,7 +754,7 @@ struct DeviceRenderer
 		std::chrono::_V2::system_clock::time_point current_time		 = std::chrono::high_resolution_clock::now();
 		float dt													 = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
-		UBO ubo = {
+		UBOClient ubo = {
 			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.projection = glm::perspective(glm::radians(45.0f), swapchain.swapchain_extent.width / (float) swapchain.swapchain_extent.height, 0.1f, 10.0f),

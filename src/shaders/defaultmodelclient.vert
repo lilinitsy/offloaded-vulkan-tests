@@ -7,6 +7,11 @@ layout(binding = 0) uniform UBO
 	mat4 model;
 	mat4 view;
 	mat4 projection;
+
+	float x;
+	float y;
+	float width;
+	float height;
 } ubo;
 
 
