@@ -707,7 +707,7 @@ struct HostRenderer
 		gettimeofday(&timer_start, nullptr);
 
 		// Read from server
-		update_camera_data();
+		//update_camera_data();
 
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
