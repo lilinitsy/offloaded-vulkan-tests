@@ -30,6 +30,7 @@
 #include "defines.h"
 #include "utils.h"
 #include "vertex.h"
+#include "camera.h"
 #include "vk_debug_messenger.h"
 #include "vk_device.h"
 #include "vk_image.h"
@@ -45,6 +46,7 @@ std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
 #define PORT 1234
 
+Camera camera = Camera(glm::vec3(0.0f, 2.0f, 2.0f));
 
 struct ImagePacket
 {
@@ -330,6 +332,16 @@ struct HostRenderer
 		}
 	}
 
+	
+	void update_camera_data()
+	{
+		float camera_data[6];
+		int client_read = read(server.client_fd, camera_data, 6 * sizeof(float));
+
+		camera.position = glm::vec3(camera_data[0], camera_data[1], camera_data[2]);
+		camera.front = glm::vec3(camera_data[3], camera_data[4], camera_data[5]);
+	}
+
 
 	void setup_descriptor_set_layout()
 	{
@@ -512,7 +524,7 @@ struct HostRenderer
 		static std::chrono::_V2::system_clock::time_point start_time = std::chrono::high_resolution_clock::now();
 		std::chrono::_V2::system_clock::time_point current_time		 = std::chrono::high_resolution_clock::now();
 		float dt													 = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-
+		
 		UBO ubo = {
 			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
@@ -694,7 +706,13 @@ struct HostRenderer
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
+		// Read from server
+		update_camera_data();
+
+
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+
+
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -775,7 +793,6 @@ struct HostRenderer
 
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
-
 
 		printf("framenum server: %lu\n", numframes);
 		numframes++;

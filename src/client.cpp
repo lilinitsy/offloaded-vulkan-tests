@@ -1067,7 +1067,20 @@ struct DeviceRenderer
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
+		// Write camera data (position, front) to server
+		float camera_data[6] = {
+			camera.position.x,
+			camera.position.y,
+			camera.position.z,
+			
+			camera.front.x,
+			camera.front.y,
+			camera.front.z,
+		};
+		write(client.socket_fd, camera_data, 6 * sizeof(float));
+
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+
 
 		//if(numframes % 100 == 0)
 		//{
