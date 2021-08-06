@@ -27,9 +27,9 @@
 
 #include <vulkan/vulkan.h>
 
-#include "Vertex.h"
 #include "defines.h"
 #include "utils.h"
+#include "vertex.h"
 #include "vk_debug_messenger.h"
 #include "vk_device.h"
 #include "vk_image.h"

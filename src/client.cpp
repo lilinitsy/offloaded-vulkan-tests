@@ -1,6 +1,3 @@
-#define GLFW_INCLUDE_VULKAN
-#include <GLFW/glfw3.h>
-
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
@@ -17,6 +14,10 @@
 #include <unistd.h>
 #include <vector>
 
+#define GLFW_INCLUDE_VULKAN
+#include <GLFW/glfw3.h>
+
+
 #define GLM_FORCE_RADIANS
 #define GLMFORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -24,15 +25,16 @@
 
 #include <vulkan/vulkan.h>
 
-#include "Vertex.h"
+#include "camera.h"
 #include "defines.h"
 #include "utils.h"
+#include "vertex.h"
 #include "vk_debug_messenger.h"
 #include "vk_device.h"
 #include "vk_image.h"
 #include "vk_models.h"
 #include "vk_queuefamilies.h"
-#include "vk_renderpass.h"	
+#include "vk_renderpass.h"
 #include "vk_shaders.h"
 #include "vk_swapchain.h"
 #include "vk_swapchain_support.h"
@@ -42,6 +44,55 @@ std::string TEXTURE_PATH = "../models/labdesk/labdesk.jpg";
 
 
 #define PORT 1234
+
+Camera camera = Camera(glm::vec3(0.0f, 2.0f, 2.0f));
+
+struct
+{
+	float last_x;
+	float last_y;
+	float yaw;
+	float pitch;
+	bool fmouse;
+} mouse;
+
+
+void mouse_callback(GLFWwindow *window, double xpos, double ypos)
+{
+	if(mouse.fmouse)
+	{
+		mouse.last_x = xpos;
+		mouse.last_y = ypos;
+		mouse.fmouse = false;
+	}
+
+	float xoffset = xpos - mouse.last_x;
+	float yoffset = mouse.last_y - ypos;
+	mouse.last_x  = xpos;
+	mouse.last_y  = ypos;
+
+	float sensitivity = 0.1f;
+	xoffset *= sensitivity;
+	yoffset *= sensitivity;
+	mouse.yaw += xoffset;
+	mouse.pitch += yoffset;
+
+	if(mouse.pitch > 89.0f)
+	{
+		mouse.pitch = 89.0f;
+	}
+
+	if(mouse.pitch < -89.0f)
+	{
+		mouse.pitch = -89.0f;
+	}
+
+	glm::vec3 front;
+	front.x		 = cos(glm::radians(mouse.yaw)) * cos(glm::radians(mouse.pitch));
+	front.y		 = sin(glm::radians(mouse.pitch));
+	front.z		 = sin(glm::radians(mouse.yaw)) * cos(glm::radians(mouse.pitch));
+	camera.front = glm::normalize(front);
+}
 
 
 struct Client
@@ -172,6 +223,8 @@ struct DeviceRenderer
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
 		window = glfwCreateWindow(CLIENTWIDTH, CLIENTHEIGHT, "Vulkan", nullptr, nullptr);
+		glfwSetCursorPosCallback(window, mouse_callback);
+		glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 	}
 
 	void init_vulkan()
@@ -576,7 +629,7 @@ struct DeviceRenderer
 		// probably offscreen_pass.sampler
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info	= vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
+			VkDescriptorBufferInfo buffer_info			   = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
 			VkDescriptorImageInfo serverimage_info		   = vki::descriptorImageInfo(server_frame_sampler, server_colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			VkDescriptorImageInfo local_renderedimage_info = vki::descriptorImageInfo(offscreen_pass.sampler, offscreen_pass.colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -754,9 +807,11 @@ struct DeviceRenderer
 		std::chrono::_V2::system_clock::time_point current_time		 = std::chrono::high_resolution_clock::now();
 		float dt													 = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
 
+		camera.move(dt, window);
+
 		UBOClient ubo = {
 			.model		= glm::mat4(1.0f),
-			.view		= glm::lookAt(glm::vec3(-0.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+			.view		= glm::lookAt(camera.position, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
 			.projection = glm::perspective(glm::radians(45.0f), swapchain.swapchain_extent.width / (float) swapchain.swapchain_extent.height, 0.1f, 10.0f),
 		};
 		ubo.projection[1][1] *= -1; // flip y coordinate from opengl

@@ -7,7 +7,7 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include "tiny_obj_loader.h"
 
-#include "Vertex.h"
+#include "vertex.h"
 
 struct Model
 {

@@ -26,9 +26,9 @@ struct UBOClient
 	glm::mat4 projection;
 
 	// Viewport
-	float x = CLIENTWIDTH / 2 - SERVERWIDTH / 2; // x and y are viewport's upper left corner (x, y)
-	float y = CLIENTWIDTH / 2 - SERVERWIDTH / 2; 
-	float width = SERVERWIDTH; // width and height are viewport's width and height
+	float x		 = CLIENTWIDTH / 2 - SERVERWIDTH / 2; // x and y are viewport's upper left corner (x, y)
+	float y		 = CLIENTWIDTH / 2 - SERVERWIDTH / 2;
+	float width	 = SERVERWIDTH; // width and height are viewport's width and height
 	float height = SERVERWIDTH;
 };
 
