@@ -27,9 +27,10 @@
 
 #include <vulkan/vulkan.h>
 
-#include "Vertex.h"
 #include "defines.h"
 #include "utils.h"
+#include "vertex.h"
+#include "camera.h"
 #include "vk_debug_messenger.h"
 #include "vk_device.h"
 #include "vk_image.h"
@@ -45,6 +46,7 @@ std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
 #define PORT 1234
 
+Camera camera = Camera(glm::vec3(0.0f, 2.0f, 2.0f));
 
 struct ImagePacket
 {
@@ -108,7 +110,7 @@ struct Server
 
 
 
-struct Renderer
+struct HostRenderer
 {
 	void run()
 	{
@@ -155,6 +157,7 @@ struct Renderer
 	std::vector<VkFence> in_flight_fences;
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
+	uint64_t numframes	   = 0;
 
 	Server server;
 
@@ -165,7 +168,7 @@ struct Renderer
 		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 		glfwWindowHint(GLFW_RESIZABLE, GLFW_FALSE);
 
-		window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+		window = glfwCreateWindow(SERVERWIDTH, SERVERHEIGHT, "Vulkan", nullptr, nullptr);
 	}
 
 	void init_vulkan()
@@ -329,6 +332,16 @@ struct Renderer
 		}
 	}
 
+	
+	void update_camera_data()
+	{
+		float camera_data[6];
+		int client_read = read(server.client_fd, camera_data, 6 * sizeof(float));
+
+		camera.position = glm::vec3(camera_data[0], camera_data[1], camera_data[2]);
+		camera.front = glm::vec3(camera_data[3], camera_data[4], camera_data[5]);
+	}
+
 
 	void setup_descriptor_set_layout()
 	{
@@ -440,10 +453,31 @@ struct Renderer
 		};
 
 
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SRGB, texextent3D, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, colour_attachment.image, colour_attachment.memory);
-		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		copy_buffer_to_image(device, command_pool, staging_buffer, colour_attachment.image, texture_width, texture_height);
-		transition_image_layout(device, command_pool, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 texextent3D,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 colour_attachment.image,
+					 colour_attachment.memory);
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		copy_buffer_to_image(device, command_pool, staging_buffer,
+							 colour_attachment.image,
+							 texture_width,
+							 texture_height);
+		transition_image_layout(device, command_pool, colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
 		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
@@ -490,7 +524,7 @@ struct Renderer
 		static std::chrono::_V2::system_clock::time_point start_time = std::chrono::high_resolution_clock::now();
 		std::chrono::_V2::system_clock::time_point current_time		 = std::chrono::high_resolution_clock::now();
 		float dt													 = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-
+		
 		UBO ubo = {
 			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
@@ -507,8 +541,8 @@ struct Renderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefault.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefault.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultserver.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultserver.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -672,7 +706,13 @@ struct Renderer
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
+		// Read from server
+		//update_camera_data();
+
+
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
+
+
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -723,47 +763,47 @@ struct Renderer
 		timeval end_of_stream;
 		gettimeofday(&start_of_stream, nullptr);
 
-		for(uint32_t i = 0; i < HEIGHT; i++)
+		// Write to PPM
+		/*std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
+			file << "P6\n"
+				<< SERVERWIDTH << "\n"
+				<< SERVERHEIGHT << "\n"
+				<< 255 << "\n";*/
+
+
+		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
-			send(server.client_fd, row, 1920 * 3, 0);
+
+			// Shifting the bits here takes way too much time.
+
+			send(server.client_fd, row, SERVERWIDTH * sizeof(uint32_t), 0);
 
 			// Receive code that line has been written
 			char code[8];
 			int client_read = read(server.client_fd, code, 8);
-			//printf("%s\n", code);
+
+			// Write to PPM
+			/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				file.write((char *) row_shifted, 3);
+				row_shifted++;
+			}*/
+
 			image_packet.data += image_packet.subresource_layout.rowPitch;
 		}
 
+		printf("framenum server: %lu\n", numframes);
+		numframes++;
+
+		// Write to PPM
+		//file.close();
+
 		gettimeofday(&end_of_stream, nullptr);
 
-			double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
-			printf("Stream dt: %f\n", stream_dt / 1000000.0f);
-
-		// Debugging: write to ppm
-		/*{
-			std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-			file << "P6\n"
-				<< WIDTH << "\n"
-				<< HEIGHT << "\n"
-				<< 255 << "\n";
-
-			for(uint32_t y = 0; y < HEIGHT; y++)
-			{
-				uint32_t *row = (uint32_t *) image_packet.data;
-
-				for(uint32_t x = 0; x < WIDTH; x++)
-				{
-					file.write((char *) row, 3);
-					row++;
-				}
-
-				image_packet.data += image_packet.subresource_layout.rowPitch;
-			}
-
-			file.close();
-		}*/
+		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
+		//printf("Stream dt: %f\n", stream_dt / 1000000.0f);
 
 		image_packet.destroy(device);
 
@@ -774,7 +814,7 @@ struct Renderer
 
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("frame dt: %f\n", (dt / 1000000.0f));
+		//printf("frame dt: %f\n", (dt / 1000000.0f));
 	}
 
 
@@ -791,17 +831,31 @@ struct Renderer
 
 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
 		ImagePacket dst;
-		VkExtent3D extent = {WIDTH, HEIGHT, 1};
+		VkExtent3D extent = {SERVERWIDTH, SERVERHEIGHT, 1};
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
 
 		// Blit from the swapchain image to the copied image
 		//VkCommandBuffer copy_command = begin_command_buffer(device, command_pool);
 
 		// Transition dst image to destination layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer, dst.image, 0, VK_ACCESS_TRANSFER_WRITE_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+		transition_image_layout(device, command_pool, copy_cmdbuffer,
+								dst.image,
+								0,
+								VK_ACCESS_TRANSFER_WRITE_BIT,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_PIPELINE_STAGE_TRANSFER_BIT,
+								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		// Transition swapchain image from present to source's transfer layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_MEMORY_READ_BIT, VK_ACCESS_TRANSFER_READ_BIT, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+		transition_image_layout(device, command_pool, copy_cmdbuffer,
+								src_image,
+								VK_ACCESS_MEMORY_READ_BIT,
+								VK_ACCESS_TRANSFER_READ_BIT,
+								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+								VK_PIPELINE_STAGE_TRANSFER_BIT,
+								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 
 		// Copy the image
@@ -810,19 +864,39 @@ struct Renderer
 		image_copy_region.srcSubresource.layerCount = 1;
 		image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		image_copy_region.dstSubresource.layerCount = 1;
-		image_copy_region.extent.width				= WIDTH;
-		image_copy_region.extent.height				= HEIGHT;
+		image_copy_region.extent.width				= SERVERWIDTH;
+		image_copy_region.extent.height				= SERVERHEIGHT;
 		image_copy_region.extent.depth				= 1;
 
-		vkCmdCopyImage(copy_cmdbuffer, src_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, dst.image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &image_copy_region);
+		vkCmdCopyImage(copy_cmdbuffer,
+					   src_image,
+					   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					   dst.image,
+					   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					   1,
+					   &image_copy_region);
 
 
 		// Transition dst image to general layout -- lets us map the image memory
-		transition_image_layout(device, command_pool, copy_cmdbuffer, dst.image, VK_ACCESS_TRANSFER_WRITE_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+		transition_image_layout(device, command_pool, copy_cmdbuffer,
+								dst.image,
+								VK_ACCESS_TRANSFER_WRITE_BIT,
+								VK_ACCESS_MEMORY_READ_BIT,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_GENERAL,
+								VK_PIPELINE_STAGE_TRANSFER_BIT,
+								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 
 		// transition to swapchain image now that copying is done
-		transition_image_layout(device, command_pool, copy_cmdbuffer, src_image, VK_ACCESS_TRANSFER_READ_BIT, VK_ACCESS_MEMORY_READ_BIT, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT);
+		transition_image_layout(device, command_pool, copy_cmdbuffer,
+								src_image,
+								VK_ACCESS_TRANSFER_READ_BIT,
+								VK_ACCESS_MEMORY_READ_BIT,
+								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+								VK_PIPELINE_STAGE_TRANSFER_BIT,
+								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		end_command_buffer(device, command_pool, copy_cmdbuffer);
 
@@ -836,7 +910,7 @@ struct Renderer
 		gettimeofday(&timer_end, nullptr);
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("dt: %f\n", (dt / 1000000.0f));
+		//printf("dt: %f\n", (dt / 1000000.0f));
 
 		return dst;
 	}
@@ -860,8 +934,8 @@ struct Renderer
 
 int main()
 {
-	Renderer renderer;
-	renderer.run();
+	HostRenderer host_renderer;
+	host_renderer.run();
 
 	return 0;
 }

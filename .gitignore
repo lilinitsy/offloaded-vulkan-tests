@@ -1,5 +1,5 @@
 .vscode/
 *.ppm
-*.o
-rendertest
 client
+main
+*.o

@@ -504,6 +504,26 @@ namespace vki
 		return sampler_create_info;
 	}
 
+	inline VkSamplerCreateInfo samplerCreateInfo(VkFilter magFilter, VkFilter minFilter, VkSamplerMipmapMode mipmapMode, VkSamplerAddressMode addressModeU, VkSamplerAddressMode addressModeV, VkSamplerAddressMode addressModeW, float mipLodBias, float maxAnisotropy, float minLod, float maxLod, VkBorderColor borderColor)
+	{
+		VkSamplerCreateInfo sampler_create_info = {
+			.sType		   = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+			.magFilter	   = magFilter,
+			.minFilter	   = minFilter,
+			.mipmapMode	   = mipmapMode,
+			.addressModeU  = addressModeU,
+			.addressModeV  = addressModeV,
+			.addressModeW  = addressModeW,
+			.mipLodBias	   = mipLodBias,
+			.maxAnisotropy = maxAnisotropy,
+			.minLod		   = 0.0f,
+			.maxLod		   = 1.0f,
+			.borderColor   = borderColor,
+		};
+
+		return sampler_create_info;
+	}
+
 	inline VkBufferImageCopy bufferImageCopy(VkDeviceSize bufferOffset, uint32_t bufferRowLength, uint32_t bufferImageHeight, VkImageSubresourceLayers imageSubresource, VkOffset3D imageOffset, VkExtent3D imageExtent)
 	{
 		VkBufferImageCopy buffer_image_copy = {

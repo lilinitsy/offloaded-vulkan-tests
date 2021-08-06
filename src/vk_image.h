@@ -103,5 +103,28 @@ VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, V
 	return image_view;
 }
 
+VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, bool t)
+{
+	VkImageViewCreateInfo image_view_ci			  = vki::imageViewCreateInfo();
+	image_view_ci.image							  = image;
+	image_view_ci.viewType						  = VK_IMAGE_VIEW_TYPE_2D;
+	image_view_ci.format						  = format;
+	image_view_ci.subresourceRange.aspectMask	  = aspectFlags;
+	image_view_ci.subresourceRange.baseMipLevel	  = 0;
+	image_view_ci.subresourceRange.levelCount	  = 1;
+	image_view_ci.subresourceRange.baseArrayLayer = 0;
+	image_view_ci.subresourceRange.layerCount	  = 1;
+
+	VkImageView image_view;
+	std::cout << "image view: " << image_view << std::endl;
+	VkResult image_view_create = vkCreateImageView(device, &image_view_ci, nullptr, &image_view);
+	if(image_view_create != VK_SUCCESS)
+	{
+		throw std::runtime_error("Could not create image views");
+	}
+
+	return image_view;
+}
+
 
 #endif
