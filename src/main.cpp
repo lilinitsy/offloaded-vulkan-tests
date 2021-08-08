@@ -1,5 +1,3 @@
-
-
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -91,7 +89,7 @@ struct Server
 		// define the address struct to be for TCP using this port
 		sockaddr_in address = {
 			.sin_family = AF_INET,
-			.sin_port	= static_cast<in_port_t>(port),
+			.sin_port	= static_cast<in_port_t>(htons(port)),
 		};
 
 		// bind to socket
@@ -125,7 +123,6 @@ struct HostRenderer
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debug_messenger;
 	VkSurfaceKHR surface;
-
 	VulkanDevice device;
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
