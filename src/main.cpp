@@ -27,10 +27,10 @@
 
 #include <vulkan/vulkan.h>
 
+#include "camera.h"
 #include "defines.h"
 #include "utils.h"
 #include "vertex.h"
-#include "camera.h"
 #include "vk_debug_messenger.h"
 #include "vk_device.h"
 #include "vk_image.h"
@@ -332,14 +332,14 @@ struct HostRenderer
 		}
 	}
 
-	
+
 	void update_camera_data()
 	{
 		float camera_data[6];
 		int client_read = read(server.client_fd, camera_data, 6 * sizeof(float));
 
 		camera.position = glm::vec3(camera_data[0], camera_data[1], camera_data[2]);
-		camera.front = glm::vec3(camera_data[3], camera_data[4], camera_data[5]);
+		camera.front	= glm::vec3(camera_data[3], camera_data[4], camera_data[5]);
 	}
 
 
@@ -524,7 +524,7 @@ struct HostRenderer
 		static std::chrono::_V2::system_clock::time_point start_time = std::chrono::high_resolution_clock::now();
 		std::chrono::_V2::system_clock::time_point current_time		 = std::chrono::high_resolution_clock::now();
 		float dt													 = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-		
+
 		UBO ubo = {
 			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),

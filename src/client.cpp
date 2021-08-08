@@ -112,7 +112,8 @@ struct Client
 	{
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
-			.sin_port	= static_cast<in_port_t>(port),
+			.sin_port	= htons(static_cast<in_port_t>(port)),
+			.sin_addr	= htonl(0xc0a80002),
 		};
 
 
@@ -1072,7 +1073,7 @@ struct DeviceRenderer
 			camera.position.x,
 			camera.position.y,
 			camera.position.z,
-			
+
 			camera.front.x,
 			camera.front.y,
 			camera.front.z,
@@ -1085,7 +1086,6 @@ struct DeviceRenderer
 		//if(numframes % 100 == 0)
 		//{
 		receive_swapchain_image();
-		printf("numframe: %lu\n", numframes);
 		//}
 
 
@@ -1142,7 +1142,7 @@ struct DeviceRenderer
 
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("frame dt: %f\n", (dt / 1000000.0f));
+		printf("numframe: %lu\tframe dt: %f\n", numframes, (dt / 1000000.0f));
 
 		numframes++;
 	}
@@ -1198,8 +1198,6 @@ struct DeviceRenderer
 		// Write to PPM
 		//file.close();
 
-		printf("framenum client: %lu\n", numframes);
-
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
@@ -1247,8 +1245,6 @@ struct DeviceRenderer
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
-
-		printf("Copy performed\n");
 
 		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}
