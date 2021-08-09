@@ -105,7 +105,9 @@ struct ImagePacket
 };
 ```
 
-In the ``copy_swapchain_image()`` function of ``main.cpp``, this is used. So it creates an image (and this runs every frame, so creating the image beforehand is probably going to be one of those micro-optimizations that should be done at some point, and just reuse that image by overwriting the memory each frame instead), transitions it to an appropriate layout to be copyable, and copies the swapchain image to it. The transition setup is important, but the actual copy itself is done with:
+In the ``copy_swapchain_image()`` function of ``main.cpp``, this is used. 
+So it creates an image (and this runs every frame, so creating the image beforehand is probably going to be one of those micro-optimizations that should be done at some point, and just reuse that image by overwriting the memory each frame instead), transitions it to an appropriate layout to be copyable, and copies the swapchain image to it. 
+The transition setup is important, but the actual copy itself is done with:
 
 ```cpp
 vkCmdCopyImage(copy_cmdbuffer,
@@ -123,4 +125,60 @@ vkQueuePresentKHR(device.present_queue, &present_info);
 ImagePacket image_packet = copy_swapchain_image();
 ```
 
-This char *data thing is a little sus. It's a pointer to the underlying image memory, but 
+This char *data in the ``ImagePacket`` struct is a little sus. It's a pointer to the underlying image memory, but it seems it only points to one row of the image at a time, and has to be incremented by the subresource layout's rowPitch. The code to send the packet is then broken up into a for loop, sending one line of the image at a time, which creates more overhead.
+
+```cpp
+for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+{
+	// Send scanline
+	uint32_t *row = (uint32_t *) image_packet.data;
+	send(server.client_fd, row, SERVERWIDTH * sizeof(uint32_t), 0);
+
+	// Receive code that line has been written
+	char code[8];
+	int client_read = read(server.client_fd, code, 8);
+	image_packet.data += image_packet.subresource_layout.rowPitch;
+}
+```
+
+The server waits for the client to send a code that it has read the line before proceeding to the next. The branch ``scaline-optimization`` has work to correct this, although is currently incomplete.
+
+Over on the client's side, ``receive_swapchain_image()`` will retrieve the swapchain image that was sent by the server.
+
+```cpp
+uint32_t servbuf[SERVERWIDTH];
+VkDeviceSize num_bytes = SERVERWIDTH * sizeof(uint32_t);
+
+// Fetch server frame
+for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+{
+	// Read from server
+	int server_read = read(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t));
+
+	if(server_read != -1)
+	{
+		// Map the image buffer memory using char *data at the current memcpy offset based on the current read
+		vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, num_bytes, 0, (void **) &data);
+		memcpy(data, servbuf, (size_t) num_bytes);
+		vkUnmapMemory(device.logical_device, image_buffer_memory);
+
+		// Increase the memcpy offset to be representative of the next row's pixels
+		memcpy_offset += num_bytes;
+
+		// Send next row num back for server to print out
+		uint32_t pixelnum	= i + memcpy_offset / num_bytes;
+		std::string strcode = std::to_string(pixelnum);
+		char *code			= (char *) strcode.c_str();
+		write(client.socket_fd, code, 8);
+	}
+}
+```
+This is read into a uint32_t buffer of size SERVERWIDTH, which is equivalent to one row. 
+Each row encoded by the server is read from a ``char *data`` pointer; but we're reading it into a uint32_t pointer. How??? Well, the bytes match. 
+``uint32_t`` is 4 bytes, or representative of one pixel. 
+The memory is then mapped for that line to a ``VkBuffer``, and so on for each line of the swapchain image being sent to the client. 
+This is just copyin it into a *buffer* though. 
+To actually put it into an image that we can read via a sampler in the fullscreen quad shader.
+
+This is done in a very similar way to how the swapchain image was copied on the server side.
+The colour attachment's image is transitioned to an appropriate layout (``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL``), copied to from a VkBuffer that had its memory mapped to that ``uint32_t`` buffer, and then the image is transitioned back to be read by the shader.
