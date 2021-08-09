@@ -182,3 +182,20 @@ To actually put it into an image that we can read via a sampler in the fullscree
 
 This is done in a very similar way to how the swapchain image was copied on the server side.
 The colour attachment's image is transitioned to an appropriate layout (``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL``), copied to from a VkBuffer that had its memory mapped to that ``uint32_t`` buffer, and then the image is transitioned back to be read by the shader.
+
+
+### **Putting Everything Together (command buffer setup)** (client)
+``setup_command_buffers()`` in ``client.cpp`` is where the two renderpasses happen.
+Basically, the first renderpass happens with the model's pipeline, with vertex and index buffers bound, and it draws to the framebuffer for the offscreen pass.
+We use ``vkCmdDrawIndexed`` to take advantage of the ibo.
+
+In the second renderpass, it renders a fullscreen quad directly to the swapchain, using the appropriately setup fullscreen quad pipeline. It only draws three triangles, on which the two samplers from the server and previous renderpass are displayed.
+
+The code for this rendering loop is very simple, because in Vulkan, the bulk of the hard stuff happens elsewhere, outside the main rendering loop.
+
+Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it got around 26fps, with some weird memory / synchronization issues over the network making the server display quite buggy.
+
+![Running frame](https://github.com/lilinitsy/offloaded-vulkan-tests/blob/separate-renderpasses/screenshots/alphascrn.png)
+
+#### **Models**
+The models come from a 3D scan of a friend of mine (rendered by the server), and from a 3D scan of my lab desk. Yay! Each one is something like 30-40k vertices. And my shitty engine only supports one model.
