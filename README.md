@@ -8,12 +8,15 @@ The server frame is rendered at the center of the client's frame with a fullscre
 ## Current State
 In this day of our [Lord](https://youtu.be/BlSinvbNqIA?t=34), there are some features missing: First of all, input from client to server to move position and camera rotation is disabled, because I have very little async to do this without destroying runtime. The fullscreen quad also stretches out the server image to display it onto a 1920x1080, which looks awful and is on the TODO. Foveated rendering is unimplemented. Running over a local TCP socket is fine, but over an actual network seems to produce odd image artifacting bugs. Everything described is the ideal to-come description, although much of it still applies in the current state.
 
-## Advantages of this approach
 Streaming the entire frame, fully rendered, is typically not possible due to consumer bandwidth limitations, so workarounds must be used.
 These can be:
 - Converting the rendered image to video frames on the server and sending them to a client (see: A Log-Rectilinear Transformation for Foveated 360-degree Video Streaming, and many others along this line of work)
 - Neural rendering can be employed to upscale a lower resolution video (see: Facebook's DeepFovea). 
 These typically have a high powered GPU working on the server to perform the inititial rendering of the subsampled frame, and then have a lot of even more high-powered GPU's to perform some kind of TSAA-style inference -- the problem with this is that they also require some very complex, trained AI, and need a lot of compute power to do the inference in real-time.
+
+## Advantages of this approach
+- Video frames are going to be lower fidelity, which can be extra unpleasant in VR, so showing rendered frames for the highest quality is ideal.
+- This is a generalizable approach that should be implementable into a lot of applications, and utilizes two GPU's (essentially) to do some load scheduling.
 
 ## Probable Disadvantages of this approach
 - To compute the same frame for the server and the client, they both need to keep a copy of the game's vertex data. 
