@@ -113,7 +113,7 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			.sin_addr	= htonl(0xc0a80002),
+			//.sin_addr	= htonl(0xc0a80002),
 		};
 
 

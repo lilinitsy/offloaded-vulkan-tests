@@ -1,8 +1,6 @@
-CXX ?= g++
-CXXFLAGS += -std=c++17 -O3
-CXXFLAGS += $(shell pkg-config --cflags glfw3) $(shell pkg-config --cflags vulkan)
-LDFLAGS += $(shell pkg-config --libs glfw3)
-LDFLAGS += $(shell pkg-config --libs vulkan)
+CXX = clang++
+CFLAGS = -std=c++11 -O3
+LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
 all: rendertest client
 
