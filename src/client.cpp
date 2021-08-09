@@ -626,8 +626,6 @@ struct DeviceRenderer
 			throw std::runtime_error("Could not allocate fsquad descriptor set");
 		}
 
-		// Val layers are saying one of these samplers is invalid
-		// probably offscreen_pass.sampler
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info			   = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
@@ -949,6 +947,7 @@ struct DeviceRenderer
 		// ========================================================================
 		//							SETUP FOR MODEL SHADER
 		// ========================================================================
+		// this was done in setup_offscreen(), maybe I'll move it back here someday!!
 	}
 
 
