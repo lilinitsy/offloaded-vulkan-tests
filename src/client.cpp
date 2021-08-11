@@ -1159,7 +1159,7 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
-			int server_read = read(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t));
+			int server_read = recv(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t), MSG_WAITALL);
 
 			if(server_read != -1)
 			{

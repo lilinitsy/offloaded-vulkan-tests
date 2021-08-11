@@ -779,7 +779,7 @@ struct HostRenderer
 
 			// Receive code that line has been written
 			char line_written_code[1];
-			int client_read = read(server.client_fd, line_written_code, 1);
+			int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 
 			// Write to PPM
 			/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
