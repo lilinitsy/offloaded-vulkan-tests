@@ -1081,14 +1081,7 @@ struct DeviceRenderer
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
-
-		//if(numframes % 100 == 0)
-		//{
 		receive_swapchain_image();
-		//}
-
-
-
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -1187,10 +1180,8 @@ struct DeviceRenderer
 				}*/
 
 				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / num_bytes;
-				std::string strcode = std::to_string(pixelnum);
-				char *code			= (char *) strcode.c_str();
-				write(client.socket_fd, code, 8);
+				char end_line_code[1] = {'d'};
+				write(client.socket_fd, end_line_code, 1);
 			}
 		}
 
