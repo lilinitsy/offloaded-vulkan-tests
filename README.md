@@ -180,8 +180,7 @@ This is read into a uint32_t buffer of size SERVERWIDTH, which is equivalent to 
 Each row encoded by the server is read from a ``char *data`` pointer; but we're reading it into a uint32_t pointer. How??? Well, the bytes match. 
 ``uint32_t`` is 4 bytes, or representative of one pixel. 
 The memory is then mapped for that line to a ``VkBuffer``, and so on for each line of the swapchain image being sent to the client. 
-This is just copyin it into a *buffer* though. 
-To actually put it into an image that we can read via a sampler in the fullscreen quad shader.
+This is just copying it into a *buffer* though, which needs to be copied into an image that can be read in for our next renderpass via a fullscreen quad.
 
 This is done in a very similar way to how the swapchain image was copied on the server side.
 The colour attachment's image is transitioned to an appropriate layout (``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL``), copied to from a VkBuffer that had its memory mapped to that ``uint32_t`` buffer, and then the image is transitioned back to be read by the shader.
@@ -202,3 +201,12 @@ Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grad
 
 #### **Models**
 The models come from a 3D scan of a friend of mine (rendered by the server), and from a 3D scan of my lab desk. Yay! Each one is something like 30-40k vertices. And my shitty engine only supports one model.
+
+## Issues To Be Fixed
+Notable issues that should be fixed include:
+- Sending the server frame as one 512x512 packet instead of scanline packets
+- Async on the server to have one thread perform the copy and send, one thread handling rendering, and one thread waiting on UBO input from the client (mouse, keyboard) to reduce the overhead from a serial pipeline
+- Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass), and one thread possibly to send the UBO's over.
+- Fix the RGB-BGR translation that happens when the server's frame is sent to the client (minor, unconcerned)
+- Render the client's frame at a smaller resolution and have it upscaled in the second renderpass to perform some sort of foveated rendering
+- "rewrite it in rust"????
