@@ -768,7 +768,7 @@ struct HostRenderer
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";
 
-		std::vector<uint32_t> imgdata;//(SERVERHEIGHT * SERVERWIDTH);
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT> imgdata;
 
 		// Coalesce image_packet.data into a buffer we can send
 		uint32_t counter = 0;
@@ -778,8 +778,9 @@ struct HostRenderer
 
 			for(uint32_t x = 0; x < SERVERWIDTH; x++)
 			{
-				imgdata.push_back(*row);
+				imgdata[counter] = *row;
 				row++;
+				counter++;
 			}
 
 
