@@ -761,14 +761,42 @@ struct HostRenderer
 		gettimeofday(&start_of_stream, nullptr);
 
 		// Write to PPM
-		/*std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-			file << "P6\n"
-				<< SERVERWIDTH << "\n"
-				<< SERVERHEIGHT << "\n"
-				<< 255 << "\n";*/
+		std::string filename = "tmpserver" + std::to_string(numframes) + ".ppm";
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << SERVERHEIGHT << "\n"
+			 << 255 << "\n";
 
+		std::vector<uint32_t*> imgdata;//(SERVERHEIGHT * SERVERWIDTH);
 
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+		{
+			uint32_t *row = (uint32_t *) image_packet.data;
+
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				imgdata.push_back(row);
+				row++;
+			}
+
+
+			image_packet.data += image_packet.subresource_layout.rowPitch;
+		}
+
+		uint32_t counter = 0;
+		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+		{
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				file.write((char *) imgdata[counter], 3);
+				counter++;
+			}
+		}
+
+
+
+		/*for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Send scanline
 			uint32_t *row = (uint32_t *) image_packet.data;
@@ -782,20 +810,20 @@ struct HostRenderer
 			int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 
 			// Write to PPM
-			/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
 			{
 				file.write((char *) row_shifted, 3);
 				row_shifted++;
-			}*/
+			}
 
 			image_packet.data += image_packet.subresource_layout.rowPitch;
-		}
+		}*/
 
 		printf("framenum server: %lu\n", numframes);
 		numframes++;
 
 		// Write to PPM
-		//file.close();
+		file.close();
 
 		gettimeofday(&end_of_stream, nullptr);
 
