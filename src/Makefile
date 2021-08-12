@@ -1,6 +1,6 @@
 CXX = clang++
-CFLAGS = -std=c++11 -O3
-LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
+CFLAGS = -std=c++11 -O3 -fopenmp
+LDFLAGS = -lglfw -lvulkan -ldl -fopenmp -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 
 all: rendertest client
 
