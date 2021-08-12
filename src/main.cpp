@@ -768,7 +768,7 @@ struct HostRenderer
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";
 
-		std::vector<uint32_t*> imgdata;//(SERVERHEIGHT * SERVERWIDTH);
+		std::vector<uint32_t> imgdata;//(SERVERHEIGHT * SERVERWIDTH);
 
 		// Coalesce image_packet.data into a buffer we can send
 		uint32_t counter = 0;
@@ -778,7 +778,7 @@ struct HostRenderer
 
 			for(uint32_t x = 0; x < SERVERWIDTH; x++)
 			{
-				imgdata.push_back(row);
+				imgdata.push_back(*row);
 				row++;
 			}
 
@@ -787,7 +787,7 @@ struct HostRenderer
 		}
 
 		// Write that buffer into a ppm
-		counter = 0;
+		/*counter = 0;
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			for(uint32_t x = 0; x < SERVERWIDTH; x++)
@@ -795,7 +795,7 @@ struct HostRenderer
 				file.write((char *) imgdata[counter], 3);
 				counter++;
 			}
-		}
+		}*/
 
 		// Send buffer over tcp socket
 		size_t framesize_bytes = imgdata.size() * sizeof(uint32_t);
