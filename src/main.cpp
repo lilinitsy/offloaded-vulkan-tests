@@ -16,7 +16,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-
+#include <omp.h>
 
 #define GLM_FORCE_RADIANS
 #define GLMFORCE_DEPTH_ZERO_TO_ONE
@@ -776,11 +776,16 @@ struct HostRenderer
 		{
 			uint32_t *row = (uint32_t *) image_packet.data;
 
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			// unroll this loop
+			for(uint32_t x = 0; x < SERVERWIDTH; x += 4)
 			{
 				imgdata[counter] = *row;
-				row++;
-				counter++;
+				imgdata[counter + 1] = *(row + 1);
+				imgdata[counter + 2] = *(row + 2);
+				imgdata[counter + 3] = *(row + 3);
+
+				row += 4;
+				counter += 4;
 			}
 
 
