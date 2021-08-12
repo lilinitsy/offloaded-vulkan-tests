@@ -1152,11 +1152,23 @@ struct DeviceRenderer
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
-		uint32_t servbuf[SERVERWIDTH];
-		VkDeviceSize num_bytes = SERVERWIDTH * sizeof(uint32_t);
+			
+		// Create buffer to read from tcp socket
+		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
+
+		// Receive & map memory
+		int server_read = recv(client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
+		vkMapMemory(device.logical_device, image_buffer_memory, 0, num_bytes, 0, (void**) &data);
+		memcpy(data, servbuf, (size_t) num_bytes);
+		vkUnmapMemory(device.logical_device, image_buffer_memory);
+		
+		// Transmit to server that code was written
+		char end_line_code[1] = {'d'};
+		write(client.socket_fd, end_line_code, 1);
 
 		// Fetch server frame
-		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+		/*for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			// Read from server
 			int server_read = recv(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t), MSG_WAITALL);
@@ -1172,18 +1184,18 @@ struct DeviceRenderer
 				memcpy_offset += num_bytes;
 
 				// Write to PPM
-				/*uint32_t *row = (uint32_t *) data;
+				uint32_t *row = (uint32_t *) data;
 				for(uint32_t x = 0; x < SERVERWIDTH; x++)
 				{
 					file.write((char *) row, 3);
 					row++;
-				}*/
+				}
 
 				// Send next row num back for server to print out
 				char end_line_code[1] = {'d'};
 				write(client.socket_fd, end_line_code, 1);
 			}
-		}
+		}*/
 
 		// Write to PPM
 		//file.close();
