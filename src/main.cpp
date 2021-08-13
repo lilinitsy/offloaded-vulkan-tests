@@ -787,74 +787,6 @@ struct HostRenderer
 			coalesce_image_data_to_buffer(384, 512, imgdata_r4, r4p, image_packet.subresource_layout.rowPitch);
 		}
 
-		std::string filenamer1 = "tmpserverr1" + std::to_string(numframes) + ".ppm";
-		std::ofstream filer1(filenamer1, std::ios::out | std::ios::binary);
-		file << "P6\n"
-			 << SERVERWIDTH << "\n"
-			 << 128 << "\n"
-			 << 255 << "\n";
-
-		std::string filenamer2 = "tmpserverr2" + std::to_string(numframes) + ".ppm";
-		std::ofstream filer2(filenamer2, std::ios::out | std::ios::binary);
-		file << "P6\n"
-			 << SERVERWIDTH << "\n"
-			 << 128 << "\n"
-			 << 255 << "\n";
-
-		std::string filenamer3 = "tmpserverr3" + std::to_string(numframes) + ".ppm";
-		std::ofstream filer3(filenamer3, std::ios::out | std::ios::binary);
-		file << "P6\n"
-			 << SERVERWIDTH << "\n"
-			 << 128 << "\n"
-			 << 255 << "\n";
-		std::string filenamer4 = "tmpserverr4" + std::to_string(numframes) + ".ppm";
-		std::ofstream filer4(filenamer4, std::ios::out | std::ios::binary);
-		file << "P6\n"
-			 << SERVERWIDTH << "\n"
-			 << 128 << "\n"
-			 << 255 << "\n";
-
-
-		uint32_t counter = 0;
-		for(uint32_t i = 0; i < 128; i++)
-		{
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				filer1.write((char *) imgdata_r1[counter], 3);
-				counter++;
-			}
-		}
-
-		counter = 0;
-		for(uint32_t i = 0; i < 128; i++)
-		{
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				filer2.write((char *) imgdata_r2[counter], 3);
-				counter++;
-			}
-		}
-
-		counter = 0;
-		for(uint32_t i = 0; i < 128; i++)
-		{
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				filer3.write((char *) imgdata_r3[counter], 3);
-				counter++;
-			}
-		}
-
-		counter = 0;
-		for(uint32_t i = 0; i < 128; i++)
-		{
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				filer4.write((char *) imgdata_r4[counter], 3);
-				counter++;
-			}
-		}
-
 		// write each segment out to ppm
 
 
@@ -897,11 +829,13 @@ struct HostRenderer
 
 		send(server.client_fd, imgdata_r2.data(), framesize_bytes, 0);
 		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
 		send(server.client_fd, imgdata_r3.data(), framesize_bytes, 0);
 		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
 		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
 		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
+		
 
 		// receive code from client that buffer was received
 
@@ -962,7 +896,7 @@ struct HostRenderer
 		{
 			uint32_t *segment = (uint32_t *) data;
 
-			for(uint32_t j = 0; j < SERVERWIDTH / 2; j++)
+			for(uint32_t j = 0; j < SERVERWIDTH; j++)
 			{
 				imgdata[counter] = *segment;
 				segment++;
