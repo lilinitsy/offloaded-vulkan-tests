@@ -761,11 +761,11 @@ struct HostRenderer
 
 		// Write to PPM
 		std::string filename = "tmpserver" + std::to_string(numframes) + ".ppm";
-		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";
+			 << 255 << "\n";*/
 
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r1; // 0-128 h, all width
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r2; // 128-256 h, all width
