@@ -3,3 +3,5 @@
 client
 rendertest
 *.o
+src/client
+src/rendertest
