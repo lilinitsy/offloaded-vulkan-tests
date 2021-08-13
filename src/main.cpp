@@ -1,5 +1,3 @@
-
-
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -11,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
+#include <omp.h>
 #include <set>
 #include <stdexcept>
 #include <stdio.h>
@@ -19,7 +18,6 @@
 #include <unistd.h>
 #include <vector>
 
-
 #define GLM_FORCE_RADIANS
 #define GLMFORCE_DEPTH_ZERO_TO_ONE
 #include <glm/glm.hpp>
@@ -27,10 +25,10 @@
 
 #include <vulkan/vulkan.h>
 
+#include "camera.h"
 #include "defines.h"
 #include "utils.h"
 #include "vertex.h"
-#include "camera.h"
 #include "vk_debug_messenger.h"
 #include "vk_device.h"
 #include "vk_image.h"
@@ -91,7 +89,7 @@ struct Server
 		// define the address struct to be for TCP using this port
 		sockaddr_in address = {
 			.sin_family = AF_INET,
-			.sin_port	= htons(static_cast<in_port_t>(port)),
+			.sin_port	= static_cast<in_port_t>(htons(port)),
 		};
 
 		// bind to socket
@@ -125,7 +123,6 @@ struct HostRenderer
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debug_messenger;
 	VkSurfaceKHR surface;
-
 	VulkanDevice device;
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
@@ -332,14 +329,14 @@ struct HostRenderer
 		}
 	}
 
-	
+
 	void update_camera_data()
 	{
 		float camera_data[6];
 		int client_read = read(server.client_fd, camera_data, 6 * sizeof(float));
 
 		camera.position = glm::vec3(camera_data[0], camera_data[1], camera_data[2]);
-		camera.front = glm::vec3(camera_data[3], camera_data[4], camera_data[5]);
+		camera.front	= glm::vec3(camera_data[3], camera_data[4], camera_data[5]);
 	}
 
 
@@ -524,7 +521,7 @@ struct HostRenderer
 		static std::chrono::_V2::system_clock::time_point start_time = std::chrono::high_resolution_clock::now();
 		std::chrono::_V2::system_clock::time_point current_time		 = std::chrono::high_resolution_clock::now();
 		float dt													 = std::chrono::duration<float, std::chrono::seconds::period>(current_time - start_time).count();
-		
+
 		UBO ubo = {
 			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 2.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
@@ -713,7 +710,6 @@ struct HostRenderer
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
 
-
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
 
@@ -764,57 +760,82 @@ struct HostRenderer
 		gettimeofday(&start_of_stream, nullptr);
 
 		// Write to PPM
-		/*std::ofstream file("tmp.ppm", std::ios::out | std::ios::binary);
-			file << "P6\n"
-				<< SERVERWIDTH << "\n"
-				<< SERVERHEIGHT << "\n"
-				<< 255 << "\n";*/
+		std::string filename = "tmpserver" + std::to_string(numframes) + ".ppm";
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << SERVERHEIGHT << "\n"
+			 << 255 << "\n";
 
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r1; // 0-128 h, all width
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r2; // 128-256 h, all width
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r3; // 256-384 h, all width
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r4; // 384-512 h, all width
 
-		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+		// Coalesce image_packet.data into a buffer we can send
+
+#pragma omp parallel
 		{
-			// Send scanline
-			uint32_t *row = (uint32_t *) image_packet.data;
-
-			// Shifting the bits here takes way too much time.
-
-			send(server.client_fd, row, SERVERWIDTH * sizeof(uint32_t), 0);
-
-			// Receive code that line has been written
-			char code[8];
-			int client_read = read(server.client_fd, code, 8);
-
-			// Write to PPM
-			/*for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				file.write((char *) row_shifted, 3);
-				row_shifted++;
-			}*/
-
-			image_packet.data += image_packet.subresource_layout.rowPitch;
+			char *r1p = image_packet.data;
+			char *r2p = image_packet.data;
+			char *r3p = image_packet.data;
+			char *r4p = image_packet.data;
+			coalesce_image_data_to_buffer(0, 128, imgdata_r1, r1p, image_packet.subresource_layout.rowPitch);
+			coalesce_image_data_to_buffer(128, 256, imgdata_r2, r2p, image_packet.subresource_layout.rowPitch);
+			coalesce_image_data_to_buffer(256, 384, imgdata_r3, r3p, image_packet.subresource_layout.rowPitch);
+			coalesce_image_data_to_buffer(384, 512, imgdata_r4, r4p, image_packet.subresource_layout.rowPitch);
 		}
+
+		// Send buffer over tcp socket
+		size_t framesize_bytes = imgdata_r1.size() * sizeof(uint32_t);
+		send(server.client_fd, imgdata_r1.data(), framesize_bytes, 0);
+		char line_written_code[1];
+		int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, imgdata_r2.data(), framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, imgdata_r3.data(), framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 
 		printf("framenum server: %lu\n", numframes);
 		numframes++;
 
-		// Write to PPM
-		//file.close();
 
 		gettimeofday(&end_of_stream, nullptr);
-
 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
-		//printf("Stream dt: %f\n", stream_dt / 1000000.0f);
 
 		image_packet.destroy(device);
-
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
 		gettimeofday(&timer_end, nullptr);
-
-
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
 		//printf("frame dt: %f\n", (dt / 1000000.0f));
+	}
+
+	void coalesce_image_data_to_buffer(uint16_t firstrow, uint16_t endrow, std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> &imgdata, char *data, VkDeviceSize row_pitch)
+	{
+		// move data pointer to the right row
+		data += firstrow * row_pitch;
+
+		uint32_t counter = 0;
+		for(uint32_t i = firstrow; i < endrow; i++)
+		{
+			uint32_t *segment = (uint32_t *) data;
+
+			for(uint32_t j = 0; j < SERVERWIDTH; j++)
+			{
+				imgdata[counter] = *segment;
+				segment++;
+				counter++;
+			}
+
+			data += row_pitch;
+		}
 	}
 
 
@@ -835,8 +856,6 @@ struct HostRenderer
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
 
 		// Blit from the swapchain image to the copied image
-		//VkCommandBuffer copy_command = begin_command_buffer(device, command_pool);
-
 		// Transition dst image to destination layout
 		transition_image_layout(device, command_pool, copy_cmdbuffer,
 								dst.image,

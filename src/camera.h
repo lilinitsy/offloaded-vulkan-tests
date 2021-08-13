@@ -40,15 +40,15 @@ struct Camera
 		if(glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
 		{
 			position = glm::vec3(position.x + speed * front.x,
-										   position.y + speed * front.y,
-										   position.z + speed * front.z);
+								 position.y + speed * front.y,
+								 position.z + speed * front.z);
 		}
 
 		if(glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
 		{
 			position = glm::vec3(position.x - speed * front.x,
-										   position.y - speed * front.y,
-										   position.z - speed * front.z);
+								 position.y - speed * front.y,
+								 position.z - speed * front.z);
 		}
 
 		if(glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)

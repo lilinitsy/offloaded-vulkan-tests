@@ -112,7 +112,8 @@ struct Client
 	{
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
-			.sin_port	= static_cast<in_port_t>(port),
+			.sin_port	= htons(static_cast<in_port_t>(port)),
+			//.sin_addr	= htonl(0xc0a80002),
 		};
 
 
@@ -625,8 +626,6 @@ struct DeviceRenderer
 			throw std::runtime_error("Could not allocate fsquad descriptor set");
 		}
 
-		// Val layers are saying one of these samplers is invalid
-		// probably offscreen_pass.sampler
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info			   = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
@@ -948,6 +947,7 @@ struct DeviceRenderer
 		// ========================================================================
 		//							SETUP FOR MODEL SHADER
 		// ========================================================================
+		// this was done in setup_offscreen(), maybe I'll move it back here someday!!
 	}
 
 
@@ -1072,7 +1072,7 @@ struct DeviceRenderer
 			camera.position.x,
 			camera.position.y,
 			camera.position.z,
-			
+
 			camera.front.x,
 			camera.front.y,
 			camera.front.z,
@@ -1081,15 +1081,7 @@ struct DeviceRenderer
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
-
-		//if(numframes % 100 == 0)
-		//{
 		receive_swapchain_image();
-		printf("numframe: %lu\n", numframes);
-		//}
-
-
-
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -1142,7 +1134,7 @@ struct DeviceRenderer
 
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("frame dt: %f\n", (dt / 1000000.0f));
+		printf("numframe: %lu\tframe dt: %f\n", numframes, (dt / 1000000.0f));
 
 		numframes++;
 	}
@@ -1160,45 +1152,27 @@ struct DeviceRenderer
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
-		uint32_t servbuf[SERVERWIDTH];
-		VkDeviceSize num_bytes = SERVERWIDTH * sizeof(uint32_t);
 
-		// Fetch server frame
-		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+		// Create buffer to read from tcp socket
+		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
+
+		// Receive & map memory
+		VkDeviceSize memmap_offset = 0;
+
+		// Map in batches of 128 rows
+		for(uint16_t i = 0; i < 4; i++)
 		{
-			// Read from server
-			int server_read = read(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t));
+			int server_read = recv(client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
+			vkMapMemory(device.logical_device, image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
+			memcpy(data, servbuf, (size_t) num_bytes);
+			vkUnmapMemory(device.logical_device, image_buffer_memory);
+			memmap_offset += num_bytes;
 
-			if(server_read != -1)
-			{
-				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, num_bytes, 0, (void **) &data);
-				memcpy(data, servbuf, (size_t) num_bytes);
-				vkUnmapMemory(device.logical_device, image_buffer_memory);
-
-				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += num_bytes;
-
-				// Write to PPM
-				/*uint32_t *row = (uint32_t *) data;
-				for(uint32_t x = 0; x < SERVERWIDTH; x++)
-				{
-					file.write((char *) row, 3);
-					row++;
-				}*/
-
-				// Send next row num back for server to print out
-				uint32_t pixelnum	= i + memcpy_offset / num_bytes;
-				std::string strcode = std::to_string(pixelnum);
-				char *code			= (char *) strcode.c_str();
-				write(client.socket_fd, code, 8);
-			}
+			// Transmit to server that code was written
+			char end_line_code[1] = {'d'};
+			write(client.socket_fd, end_line_code, 1);
 		}
-
-		// Write to PPM
-		//file.close();
-
-		printf("framenum client: %lu\n", numframes);
 
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
@@ -1247,8 +1221,6 @@ struct DeviceRenderer
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // layout transitioning to
 								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
-
-		printf("Copy performed\n");
 
 		end_command_buffer(device, command_pool, copy_cmdbuf);
 	}
