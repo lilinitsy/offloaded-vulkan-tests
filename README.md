@@ -1,6 +1,10 @@
 # offloaded-vulkan-tests
 Very lightweight test engine for offloaded rendering using Vulkan. A lot of it is adapted either from vulkan-tutorial, vkguide, and sascha's vulkan samples.
 
+Functioning code with scanline networking: https://github.com/lilinitsy/offloaded-vulkan-tests/commit/40b1ca8c18d44c57f8c2e603a1c53dc4eb45b6bb
+
+Functioning code with server frame sent as one buffer: https://github.com/lilinitsy/offloaded-vulkan-tests/commit/28a07d2fec9e1f523faf5296d2f7e868761e0eeb
+
 At a high level overview, the server will render a high fidelity central region of the viewport and send that rendered frame over a TCP socket to the client.
 The client renders the entire scene, but at a lower resolution and upscales with foveated rendering. 
 The server frame is rendered at the center of the client's frame with a fullscreen quad.
