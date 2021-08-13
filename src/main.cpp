@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
+#include <omp.h>
 #include <set>
 #include <stdexcept>
 #include <stdio.h>
@@ -16,7 +17,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-#include <omp.h>
 
 #define GLM_FORCE_RADIANS
 #define GLMFORCE_DEPTH_ZERO_TO_ONE
@@ -768,10 +768,97 @@ struct HostRenderer
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";
 
-		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT> imgdata;
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r1; // 0-128 h, all width
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r2; // 128-256 h, all width
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r3; // 256-384 h, all width
+		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r4; // 384-512 h, all width
 
 		// Coalesce image_packet.data into a buffer we can send
+
+#pragma omp parallel //private(image_packet.data)
+		{
+			char *r1p = image_packet.data;
+			char *r2p = image_packet.data;
+			char *r3p = image_packet.data;
+			char *r4p = image_packet.data;
+			coalesce_image_data_to_buffer(0, 128, imgdata_r1, r1p, image_packet.subresource_layout.rowPitch);
+			coalesce_image_data_to_buffer(128, 256, imgdata_r2, r2p, image_packet.subresource_layout.rowPitch);
+			coalesce_image_data_to_buffer(256, 384, imgdata_r3, r3p, image_packet.subresource_layout.rowPitch);
+			coalesce_image_data_to_buffer(384, 512, imgdata_r4, r4p, image_packet.subresource_layout.rowPitch);
+		}
+
+		std::string filenamer1 = "tmpserverr1" + std::to_string(numframes) + ".ppm";
+		std::ofstream filer1(filenamer1, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << 128 << "\n"
+			 << 255 << "\n";
+
+		std::string filenamer2 = "tmpserverr2" + std::to_string(numframes) + ".ppm";
+		std::ofstream filer2(filenamer2, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << 128 << "\n"
+			 << 255 << "\n";
+
+		std::string filenamer3 = "tmpserverr3" + std::to_string(numframes) + ".ppm";
+		std::ofstream filer3(filenamer3, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << 128 << "\n"
+			 << 255 << "\n";
+		std::string filenamer4 = "tmpserverr4" + std::to_string(numframes) + ".ppm";
+		std::ofstream filer4(filenamer4, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << 128 << "\n"
+			 << 255 << "\n";
+
+
 		uint32_t counter = 0;
+		for(uint32_t i = 0; i < 128; i++)
+		{
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				filer1.write((char *) imgdata_r1[counter], 3);
+				counter++;
+			}
+		}
+
+		counter = 0;
+		for(uint32_t i = 0; i < 128; i++)
+		{
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				filer2.write((char *) imgdata_r2[counter], 3);
+				counter++;
+			}
+		}
+
+		counter = 0;
+		for(uint32_t i = 0; i < 128; i++)
+		{
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				filer3.write((char *) imgdata_r3[counter], 3);
+				counter++;
+			}
+		}
+
+		counter = 0;
+		for(uint32_t i = 0; i < 128; i++)
+		{
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				filer4.write((char *) imgdata_r4[counter], 3);
+				counter++;
+			}
+		}
+
+		// write each segment out to ppm
+
+
+		/*uint32_t counter = 0;
 		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
 		{
 			uint32_t *row = (uint32_t *) image_packet.data;
@@ -788,9 +875,8 @@ struct HostRenderer
 				counter += 4;
 			}
 
-
 			image_packet.data += image_packet.subresource_layout.rowPitch;
-		}
+		}*/
 
 		// Write that buffer into a ppm
 		/*counter = 0;
@@ -804,12 +890,20 @@ struct HostRenderer
 		}*/
 
 		// Send buffer over tcp socket
-		size_t framesize_bytes = imgdata.size() * sizeof(uint32_t);
-		send(server.client_fd, imgdata.data(), framesize_bytes, 0);
-		
-		// receive code from client that buffer was received
+		size_t framesize_bytes = imgdata_r1.size() * sizeof(uint32_t);
+		send(server.client_fd, imgdata_r1.data(), framesize_bytes, 0);
 		char line_written_code[1];
 		int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, imgdata_r2.data(), framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+		send(server.client_fd, imgdata_r3.data(), framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+
+		// receive code from client that buffer was received
 
 
 		/*for(uint32_t i = 0; i < SERVERHEIGHT; i++)
@@ -856,6 +950,27 @@ struct HostRenderer
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
 		//printf("frame dt: %f\n", (dt / 1000000.0f));
+	}
+
+	void coalesce_image_data_to_buffer(uint16_t firstrow, uint16_t endrow, std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> &imgdata, char *data, VkDeviceSize row_pitch)
+	{
+		// move data pointer to the right row
+		data += firstrow * row_pitch;
+
+		uint32_t counter = 0;
+		for(uint32_t i = firstrow; i < endrow; i++)
+		{
+			uint32_t *segment = (uint32_t *) data;
+
+			for(uint32_t j = 0; j < SERVERWIDTH / 2; j++)
+			{
+				imgdata[counter] = *segment;
+				segment++;
+				counter++;
+			}
+
+			data += row_pitch;
+		}
 	}
 
 

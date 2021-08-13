@@ -1152,20 +1152,28 @@ struct DeviceRenderer
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
-			
+
 		// Create buffer to read from tcp socket
 		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
-		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
 
 		// Receive & map memory
-		int server_read = recv(client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
-		vkMapMemory(device.logical_device, image_buffer_memory, 0, num_bytes, 0, (void**) &data);
-		memcpy(data, servbuf, (size_t) num_bytes);
-		vkUnmapMemory(device.logical_device, image_buffer_memory);
-		
-		// Transmit to server that code was written
-		char end_line_code[1] = {'d'};
-		write(client.socket_fd, end_line_code, 1);
+		VkDeviceSize memmap_offset = 0;
+
+		// Map in batches of 128 rows
+		for(uint16_t i = 0; i < 4; i++)
+		{
+			int server_read = recv(client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
+			vkMapMemory(device.logical_device, image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
+			memcpy(data, servbuf, (size_t) num_bytes);
+			vkUnmapMemory(device.logical_device, image_buffer_memory);
+			memmap_offset += num_bytes;
+
+			// Transmit to server that code was written
+			char end_line_code[1] = {'d'};
+			write(client.socket_fd, end_line_code, 1);
+		}
+
 
 		// Fetch server frame
 		/*for(uint32_t i = 0; i < SERVERHEIGHT; i++)
