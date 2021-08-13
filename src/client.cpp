@@ -1174,40 +1174,6 @@ struct DeviceRenderer
 			write(client.socket_fd, end_line_code, 1);
 		}
 
-
-		// Fetch server frame
-		/*for(uint32_t i = 0; i < SERVERHEIGHT; i++)
-		{
-			// Read from server
-			int server_read = recv(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t), MSG_WAITALL);
-
-			if(server_read != -1)
-			{
-				// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-				vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, num_bytes, 0, (void **) &data);
-				memcpy(data, servbuf, (size_t) num_bytes);
-				vkUnmapMemory(device.logical_device, image_buffer_memory);
-
-				// Increase the memcpy offset to be representative of the next row's pixels
-				memcpy_offset += num_bytes;
-
-				// Write to PPM
-				uint32_t *row = (uint32_t *) data;
-				for(uint32_t x = 0; x < SERVERWIDTH; x++)
-				{
-					file.write((char *) row, 3);
-					row++;
-				}
-
-				// Send next row num back for server to print out
-				char end_line_code[1] = {'d'};
-				write(client.socket_fd, end_line_code, 1);
-			}
-		}*/
-
-		// Write to PPM
-		//file.close();
-
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);

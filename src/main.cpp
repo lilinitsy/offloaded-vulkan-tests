@@ -710,7 +710,6 @@ struct HostRenderer
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
 
-
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
 
@@ -775,7 +774,7 @@ struct HostRenderer
 
 		// Coalesce image_packet.data into a buffer we can send
 
-#pragma omp parallel //private(image_packet.data)
+#pragma omp parallel
 		{
 			char *r1p = image_packet.data;
 			char *r2p = image_packet.data;
@@ -786,40 +785,6 @@ struct HostRenderer
 			coalesce_image_data_to_buffer(256, 384, imgdata_r3, r3p, image_packet.subresource_layout.rowPitch);
 			coalesce_image_data_to_buffer(384, 512, imgdata_r4, r4p, image_packet.subresource_layout.rowPitch);
 		}
-
-		// write each segment out to ppm
-
-
-		/*uint32_t counter = 0;
-		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
-		{
-			uint32_t *row = (uint32_t *) image_packet.data;
-
-			// unroll this loop
-			for(uint32_t x = 0; x < SERVERWIDTH; x += 4)
-			{
-				imgdata[counter] = *row;
-				imgdata[counter + 1] = *(row + 1);
-				imgdata[counter + 2] = *(row + 2);
-				imgdata[counter + 3] = *(row + 3);
-
-				row += 4;
-				counter += 4;
-			}
-
-			image_packet.data += image_packet.subresource_layout.rowPitch;
-		}*/
-
-		// Write that buffer into a ppm
-		/*counter = 0;
-		for(uint32_t i = 0; i < SERVERHEIGHT; i++)
-		{
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				file.write((char *) imgdata[counter], 3);
-				counter++;
-			}
-		}*/
 
 		// Send buffer over tcp socket
 		size_t framesize_bytes = imgdata_r1.size() * sizeof(uint32_t);
@@ -835,53 +800,19 @@ struct HostRenderer
 
 		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
 		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-		
-
-		// receive code from client that buffer was received
-
-
-		/*for(uint32_t i = 0; i < SERVERHEIGHT; i++)
-		{
-			// Send scanline
-			uint32_t *row = (uint32_t *) image_packet.data;
-
-			// Shifting the bits here takes way too much time.
-
-			send(server.client_fd, row, SERVERWIDTH * sizeof(uint32_t), 0);
-
-			// Receive code that line has been written
-			char line_written_code[1];
-			int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-			// Write to PPM
-			for(uint32_t x = 0; x < SERVERWIDTH; x++)
-			{
-				file.write((char *) row_shifted, 3);
-				row_shifted++;
-			}
-
-			image_packet.data += image_packet.subresource_layout.rowPitch;
-		}*/
 
 		printf("framenum server: %lu\n", numframes);
 		numframes++;
 
-		// Write to PPM
-		file.close();
 
 		gettimeofday(&end_of_stream, nullptr);
-
 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
-		//printf("Stream dt: %f\n", stream_dt / 1000000.0f);
 
 		image_packet.destroy(device);
-
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
 		gettimeofday(&timer_end, nullptr);
-
-
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
 		//printf("frame dt: %f\n", (dt / 1000000.0f));
 	}
@@ -925,8 +856,6 @@ struct HostRenderer
 		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
 
 		// Blit from the swapchain image to the copied image
-		//VkCommandBuffer copy_command = begin_command_buffer(device, command_pool);
-
 		// Transition dst image to destination layout
 		transition_image_layout(device, command_pool, copy_cmdbuffer,
 								dst.image,
