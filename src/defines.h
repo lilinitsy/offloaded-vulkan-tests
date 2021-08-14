@@ -22,7 +22,8 @@ const std::vector<const char*> required_validation_layers =
 
 const std::vector<const char*> required_device_extensions = 
 {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	//VK_EXT_FRAGMENT_DENSITY_MAP_EXTENSION_NAME, // Try seeing if this can work once get access to a device with this supported...
 };
 // clang-format on
 
