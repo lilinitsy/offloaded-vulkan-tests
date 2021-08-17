@@ -1163,7 +1163,13 @@ struct DeviceRenderer
 		// Map in batches of 128 rows
 		for(uint16_t i = 0; i < 4; i++)
 		{
-			int server_read = recv(client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
+			size_t servbufidx = 0;
+			do
+			{
+				ssize_t server_read = read(client.socket_fd, &servbuf[servbufidx], num_bytes - servbufidx);
+				servbufidx += server_read;
+			} while(servbufidx < num_bytes);
+
 			vkMapMemory(device.logical_device, image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
 			memcpy(data, servbuf, (size_t) num_bytes);
 			vkUnmapMemory(device.logical_device, image_buffer_memory);
