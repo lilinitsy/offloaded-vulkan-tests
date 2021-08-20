@@ -962,6 +962,45 @@ struct DeviceRenderer
 		}
 	}
 
+	struct FirstRenderPassArgs
+	{
+		VkCommandBuffer cmdbuf;
+		VkDescriptorSet descriptor_set;
+	};
+
+	void execute_first_renderpass(void *renderpassargs)
+	{
+		FirstRenderPassArgs *args = (FirstRenderPassArgs*) renderpassargs;
+
+		// First pass: The offscreen rendering
+		{
+			VkClearValue clear_values[2];
+			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
+			clear_values[1].depthStencil		= {1.0f, 0};
+			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(offscreen_pass.renderpass,
+																			offscreen_pass.framebuffer,
+																			{0, 0},
+																			swapchain.swapchain_extent,
+																			2, clear_values);
+
+			vkCmdBeginRenderPass(args->cmdbuf, &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
+
+			vkCmdBindPipeline(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
+
+			VkBuffer vertex_buffers[] = {vbo};
+			VkDeviceSize offsets[]	  = {0};
+
+			vkCmdBindVertexBuffers(args->cmdbuf, 0, 1, vertex_buffers, offsets);
+			vkCmdBindIndexBuffer(args->cmdbuf, ibo, 0, VK_INDEX_TYPE_UINT32);
+
+			vkCmdBindDescriptorSets(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &args->descriptor_set, 0, nullptr);
+
+			vkCmdDrawIndexed(args->cmdbuf, model.indices.size(), 1, 0, 0, 0);
+
+			vkCmdEndRenderPass(args->cmdbuf);
+		}
+	}
+
 	void setup_command_buffers()
 	{
 		command_buffers.resize(swapchain.framebuffers.size());
@@ -982,34 +1021,10 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
 
-			// First pass: The offscreen rendering
-			{
-				VkClearValue clear_values[2];
-				clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
-				clear_values[1].depthStencil		= {1.0f, 0};
-				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(offscreen_pass.renderpass,
-																			   offscreen_pass.framebuffer,
-																			   {0, 0},
-																			   swapchain.swapchain_extent,
-																			   2, clear_values);
+			FirstRenderPassArgs renderpassargs = {command_buffers[i], descriptor_sets.model[i]};
+			execute_first_renderpass((void*) &renderpassargs);
 
-				vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
-
-				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
-
-				VkBuffer vertex_buffers[] = {vbo};
-				VkDeviceSize offsets[]	  = {0};
-
-				vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-				vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
-
-				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
-
-				vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-
-				vkCmdEndRenderPass(command_buffers[i]);
-			}
-
+			
 			// Second renderpass: Fullscreen quad draw
 			{
 				VkClearValue clear_values[2];
