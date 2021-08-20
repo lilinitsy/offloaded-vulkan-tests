@@ -214,6 +214,9 @@ struct DeviceRenderer
 	uint32_t current_frame = 0;
 	uint64_t numframes	   = 0;
 
+	pthread_t rec_image_thread;
+	pthread_t first_renderpass_thread;
+
 	Client client;
 
 	void initWindow()
@@ -1095,8 +1098,9 @@ struct DeviceRenderer
 		write(client.socket_fd, camera_data, 6 * sizeof(float));
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-
-		receive_swapchain_image();
+		
+		int receive_image_thread_create = pthread_create(&rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
+		pthread_join(rec_image_thread, nullptr);
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -1154,13 +1158,14 @@ struct DeviceRenderer
 		numframes++;
 	}
 
-
 	// Test function adapted from sasha's example screenshot
-	void receive_swapchain_image()
+	static void *receive_swapchain_image(void* devicerenderer)
 	{
+		DeviceRenderer *dr = (DeviceRenderer*) devicerenderer;
+
 		char *data;
 		VkDeviceSize memcpy_offset = 0;
-		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
+		std::string filename	   = "tmpclient" + std::to_string(dr->numframes) + ".ppm";
 
 		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
@@ -1181,27 +1186,27 @@ struct DeviceRenderer
 			size_t servbufidx = 0;
 			do
 			{
-				ssize_t server_read = read(client.socket_fd, &servbuf[servbufidx], num_bytes - servbufidx);
+				ssize_t server_read = read(dr->client.socket_fd, &servbuf[servbufidx], num_bytes - servbufidx);
 				servbufidx += server_read;
 			} while(servbufidx < num_bytes);
 
-			vkMapMemory(device.logical_device, image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
+			vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
 			memcpy(data, servbuf, (size_t) num_bytes);
-			vkUnmapMemory(device.logical_device, image_buffer_memory);
+			vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
 			memmap_offset += num_bytes;
 
 			// Transmit to server that code was written
 			char end_line_code[1] = {'d'};
-			write(client.socket_fd, end_line_code, 1);
+			write(dr->client.socket_fd, end_line_code, 1);
 		}
 
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
-		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
+		VkCommandBuffer copy_cmdbuf = begin_command_buffer(dr->device, dr->command_pool);
 
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-								server_colour_attachment.image,
+		transition_image_layout(dr->device, dr->command_pool, copy_cmdbuf,
+								dr->server_colour_attachment.image,
 								VK_ACCESS_MEMORY_READ_BIT,				  // src access_mask
 								VK_ACCESS_TRANSFER_WRITE_BIT,			  // dst access_mask
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // current layout
@@ -1228,14 +1233,14 @@ struct DeviceRenderer
 
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
-							   image_buffer,
-							   server_colour_attachment.image,
+							   dr->image_buffer,
+							   dr->server_colour_attachment.image,
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
 
 		// Transition swapchain image back
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-								server_colour_attachment.image,
+		transition_image_layout(dr->device, dr->command_pool, copy_cmdbuf,
+								dr->server_colour_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,			  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,				  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // current layout
@@ -1243,7 +1248,9 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
-		end_command_buffer(device, command_pool, copy_cmdbuf);
+		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
+
+		return nullptr;
 	}
 
 
