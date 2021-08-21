@@ -146,13 +146,13 @@ struct DeviceRenderer
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
 
-	struct
+	struct PipelineLayouts
 	{
 		VkPipelineLayout model;
 		VkPipelineLayout fsquad;
 	} pipeline_layouts;
 
-	struct
+	struct Pipelines
 	{
 		VkPipeline model;
 		VkPipeline fsquad;
@@ -189,7 +189,7 @@ struct DeviceRenderer
 
 	VkDescriptorPool descriptor_pool;
 
-	struct
+	struct DescriptorSets
 	{
 		std::vector<VkDescriptorSet> model;
 		std::vector<VkDescriptorSet> fsquad;
@@ -197,7 +197,7 @@ struct DeviceRenderer
 
 
 	// Modeled from sascha's radialblur
-	struct
+	struct OffscreenPass
 	{
 		VkFramebuffer framebuffer;
 		VulkanAttachment colour_attachment;
@@ -970,11 +970,18 @@ struct DeviceRenderer
 
 	struct FirstRenderPassArgs
 	{
+		OffscreenPass offscreen_pass;
+		VulkanSwapchain swapchain;
+		Pipelines pipelines;
 		VkCommandBuffer cmdbuf;
 		VkDescriptorSet descriptor_set;
+		VkBuffer vbo;
+		VkBuffer ibo;
+		PipelineLayouts pipeline_layouts;
+		Model model;
 	};
 
-	void execute_first_renderpass(void *renderpassargs)
+	static void *execute_first_renderpass(void *renderpassargs)
 	{
 		FirstRenderPassArgs *args = (FirstRenderPassArgs*) renderpassargs;
 
@@ -983,28 +990,30 @@ struct DeviceRenderer
 			VkClearValue clear_values[2];
 			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
 			clear_values[1].depthStencil		= {1.0f, 0};
-			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(offscreen_pass.renderpass,
-																			offscreen_pass.framebuffer,
+			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(args->offscreen_pass.renderpass,
+																			args->offscreen_pass.framebuffer,
 																			{0, 0},
-																			swapchain.swapchain_extent,
+																			args->swapchain.swapchain_extent,
 																			2, clear_values);
 
 			vkCmdBeginRenderPass(args->cmdbuf, &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
+			vkCmdBindPipeline(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, args->pipelines.model);
 
-			VkBuffer vertex_buffers[] = {vbo};
+			VkBuffer vertex_buffers[] = {args->vbo};
 			VkDeviceSize offsets[]	  = {0};
 
 			vkCmdBindVertexBuffers(args->cmdbuf, 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(args->cmdbuf, ibo, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(args->cmdbuf, args->ibo, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdBindDescriptorSets(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &args->descriptor_set, 0, nullptr);
+			vkCmdBindDescriptorSets(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, args->pipeline_layouts.model, 0, 1, &args->descriptor_set, 0, nullptr);
 
-			vkCmdDrawIndexed(args->cmdbuf, model.indices.size(), 1, 0, 0, 0);
+			vkCmdDrawIndexed(args->cmdbuf, args->model.indices.size(), 1, 0, 0, 0);
 
 			vkCmdEndRenderPass(args->cmdbuf);
 		}
+
+		return nullptr;
 	}
 
 	void setup_command_buffers()
@@ -1027,10 +1036,11 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
 
-			FirstRenderPassArgs renderpassargs = {command_buffers[i], descriptor_sets.model[i]};
+			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
+			int first_renderpass_thread = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void*) &renderpassargs);
 
-			execute_first_renderpass((void*) &renderpassargs);
 			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
 			
 			// Second renderpass: Fullscreen quad draw
 			{
