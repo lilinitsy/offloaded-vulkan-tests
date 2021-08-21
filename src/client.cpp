@@ -214,8 +214,11 @@ struct DeviceRenderer
 	uint32_t current_frame = 0;
 	uint64_t numframes	   = 0;
 
-	pthread_t rec_image_thread;
-	pthread_t first_renderpass_thread;
+	struct
+	{
+		pthread_t rec_image_thread;
+		pthread_t first_renderpass_thread;
+	} vk_pthread_t;
 
 	Client client;
 
@@ -254,7 +257,7 @@ struct DeviceRenderer
 		initialize_ubos();
 		setup_descriptor_pool();
 		setup_descriptor_sets();
-		setup_command_buffers();
+		//setup_command_buffers();
 		setup_vk_async();
 
 		create_copy_image_buffer();
@@ -1025,8 +1028,9 @@ struct DeviceRenderer
 			}
 
 			FirstRenderPassArgs renderpassargs = {command_buffers[i], descriptor_sets.model[i]};
-			execute_first_renderpass((void*) &renderpassargs);
 
+			execute_first_renderpass((void*) &renderpassargs);
+			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 			
 			// Second renderpass: Fullscreen quad draw
 			{
@@ -1081,6 +1085,7 @@ struct DeviceRenderer
 
 	void render_complete_frame()
 	{
+		
 		timeval timer_start;
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
@@ -1099,8 +1104,10 @@ struct DeviceRenderer
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 		
-		int receive_image_thread_create = pthread_create(&rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
-		pthread_join(rec_image_thread, nullptr);
+		// Make a thread for the swapchain image
+		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
+		setup_command_buffers();
+		//pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
