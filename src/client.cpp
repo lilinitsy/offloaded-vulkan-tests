@@ -983,7 +983,7 @@ struct DeviceRenderer
 
 	static void *execute_first_renderpass(void *renderpassargs)
 	{
-		FirstRenderPassArgs *args = (FirstRenderPassArgs*) renderpassargs;
+		FirstRenderPassArgs *args = (FirstRenderPassArgs *) renderpassargs;
 
 		// First pass: The offscreen rendering
 		{
@@ -991,10 +991,10 @@ struct DeviceRenderer
 			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
 			clear_values[1].depthStencil		= {1.0f, 0};
 			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(args->offscreen_pass.renderpass,
-																			args->offscreen_pass.framebuffer,
-																			{0, 0},
-																			args->swapchain.swapchain_extent,
-																			2, clear_values);
+																		   args->offscreen_pass.framebuffer,
+																		   {0, 0},
+																		   args->swapchain.swapchain_extent,
+																		   2, clear_values);
 
 			vkCmdBeginRenderPass(args->cmdbuf, &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -1037,11 +1037,11 @@ struct DeviceRenderer
 			}
 
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
-			int first_renderpass_thread = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void*) &renderpassargs);
+			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
 
 			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
-			
+
 			// Second renderpass: Fullscreen quad draw
 			{
 				VkClearValue clear_values[2];
@@ -1095,7 +1095,7 @@ struct DeviceRenderer
 
 	void render_complete_frame()
 	{
-		
+
 		timeval timer_start;
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
@@ -1113,7 +1113,7 @@ struct DeviceRenderer
 		write(client.socket_fd, camera_data, 6 * sizeof(float));
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
-		
+
 		// Make a thread for the swapchain image
 		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
 		setup_command_buffers();
@@ -1176,9 +1176,9 @@ struct DeviceRenderer
 	}
 
 	// Test function adapted from sasha's example screenshot
-	static void *receive_swapchain_image(void* devicerenderer)
+	static void *receive_swapchain_image(void *devicerenderer)
 	{
-		DeviceRenderer *dr = (DeviceRenderer*) devicerenderer;
+		DeviceRenderer *dr = (DeviceRenderer *) devicerenderer;
 
 		char *data;
 		VkDeviceSize memcpy_offset = 0;
