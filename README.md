@@ -210,7 +210,7 @@ The models come from a 3D scan of a friend of mine (rendered by the server), and
 Notable issues that should be fixed include:
 - Sending the server frame as one 512x512 packet instead of scanline packets
 - Async on the server to have one thread perform the copy and send, one thread handling rendering, and one thread waiting on UBO input from the client (mouse, keyboard) to reduce the overhead from a serial pipeline
-- Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass), and one thread possibly to send the UBO's over.
+- ~~Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass)~~, and one thread possibly to send the UBO's over. (Partially done, the UBO's being sent are currently unhandled).
 - Fix the RGB-BGR translation that happens when the server's frame is sent to the client (minor, unconcerned)
 - Render the client's frame at a smaller resolution and have it upscaled in the second renderpass to perform some sort of foveated rendering
 - "rewrite it in rust"????
