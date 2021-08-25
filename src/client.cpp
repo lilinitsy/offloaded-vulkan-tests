@@ -113,7 +113,7 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			//.sin_addr	= htonl(0xc0a80002),
+			.sin_addr	= htonl(0xc0a80002),
 		};
 
 
@@ -1039,7 +1039,10 @@ struct DeviceRenderer
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
 
-			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+			if(i == 0)
+			{
+				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+			}
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
 
 			// Second renderpass: Fullscreen quad draw
@@ -1110,7 +1113,7 @@ struct DeviceRenderer
 			camera.front.y,
 			camera.front.z,
 		};
-		write(client.socket_fd, camera_data, 6 * sizeof(float));
+		//write(client.socket_fd, camera_data, 6 * sizeof(float));
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
@@ -1206,6 +1209,8 @@ struct DeviceRenderer
 				ssize_t server_read = read(dr->client.socket_fd, &servbuf[servbufidx], num_bytes - servbufidx);
 				servbufidx += server_read;
 			} while(servbufidx < num_bytes);
+
+			printf("Read %d\t%zu\n", i, servbufidx);
 
 			vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
 			memcpy(data, servbuf, (size_t) num_bytes);
