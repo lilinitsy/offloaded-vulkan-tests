@@ -113,7 +113,7 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			.sin_addr	= htonl(0xc0a80002),
+			//.sin_addr	= htonl(0xc0a80002),
 		};
 
 
@@ -180,6 +180,8 @@ struct DeviceRenderer
 
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
+
+	char *server_image_data;
 
 	struct
 	{
@@ -1039,11 +1041,13 @@ struct DeviceRenderer
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
 
-			if(i == 0)
-			{
-				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
-			}
+
+			// The pthread_join isn't actually waiting here
+			// Try joining before calling setup_command_buffers() 
+
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
+
+			//sleep(1);
 
 			// Second renderpass: Fullscreen quad draw
 			{
@@ -1119,6 +1123,8 @@ struct DeviceRenderer
 
 		// Make a thread for the swapchain image
 		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
+		pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+
 		setup_command_buffers();
 		//pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 
@@ -1183,19 +1189,18 @@ struct DeviceRenderer
 	{
 		DeviceRenderer *dr = (DeviceRenderer *) devicerenderer;
 
-		char *data;
 		VkDeviceSize memcpy_offset = 0;
 		std::string filename	   = "tmpclient" + std::to_string(dr->numframes) + ".ppm";
 
-		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";*/
+			 << 255 << "\n";
 
 		// Create buffer to read from tcp socket
-		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
 		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
+		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
 
 		// Receive & map memory
 		VkDeviceSize memmap_offset = 0;
@@ -1212,15 +1217,30 @@ struct DeviceRenderer
 
 			printf("Read %d\t%zu\n", i, servbufidx);
 
-			vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
-			memcpy(data, servbuf, (size_t) num_bytes);
+			printf("memmap offset in loop: %zu\n", memmap_offset);
+			vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
+			memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);	
 			vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
 			memmap_offset += num_bytes;
+
+			// write to ppm
+			for(uint32_t j = 0; j < 128; j++)
+			{
+				uint32_t *row = (uint32_t*) dr->server_image_data;
+				for(uint32_t x = 0; x < SERVERWIDTH; x++)
+				{
+					file.write((char*) row, 3);
+					row++;
+				}
+
+				dr->server_image_data += num_bytes / 128;
+			}
 
 			// Transmit to server that code was written
 			char end_line_code[1] = {'d'};
 			write(dr->client.socket_fd, end_line_code, 1);
 		}
+		printf("memmap offset outside loop: %zu\n", memmap_offset);
 
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
