@@ -1041,15 +1041,20 @@ struct DeviceRenderer
 
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
-			int receive_image_thread_create	   = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
 
 
 			// The pthread_join isn't actually waiting here
 			// Try joining before calling setup_command_buffers()
+
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
 			printf("First renderpass joined\n");
-			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
-			printf("Rec image joind\n");
+
+			if(i == 0)
+			{
+				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+				printf("Rec image joind\n");
+			}
+
 
 			//sleep(1);
 
@@ -1107,6 +1112,7 @@ struct DeviceRenderer
 
 	void render_complete_frame()
 	{
+		auto start = std::chrono::high_resolution_clock::now();
 
 		timeval timer_start;
 		timeval timer_end;
@@ -1126,6 +1132,7 @@ struct DeviceRenderer
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
+		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
 		// Make a thread for the swapchain image
 		setup_command_buffers();
 
@@ -1179,8 +1186,10 @@ struct DeviceRenderer
 		gettimeofday(&timer_end, nullptr);
 
 
-		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("numframe: %lu\tframe dt: %f\n", numframes, (dt / 1000000.0f));
+		auto finish										  = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double, std::milli> elapsed = finish - start;
+		std::cout << "Elapsed Time: " << elapsed.count() << " ms" << std::endl;
+		std::cout << "numframe: " << numframes << "\tframe dt: " << elapsed.count() << std::endl;
 
 		numframes++;
 	}
@@ -1215,16 +1224,13 @@ struct DeviceRenderer
 
 			if(server_read != -1)
 			{
-				printf("Read %d\t%zu\n", i, servbufidx);
-
-				printf("memmap offset in loop: %zu\n", memmap_offset);
 				vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
 				memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);
 				vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
 				memmap_offset += num_bytes;
 
 				// write to ppm
-				for(uint32_t j = 0; j < 128; j++)
+				/*for(uint32_t j = 0; j < 128; j++)
 				{
 					uint32_t *row = (uint32_t *) dr->server_image_data;
 					for(uint32_t x = 0; x < SERVERWIDTH; x++)
@@ -1234,7 +1240,7 @@ struct DeviceRenderer
 					}
 
 					dr->server_image_data += num_bytes / 128;
-				}
+				}*/
 
 				// Transmit to server that code was written
 				char end_line_code[1] = {'d'};
