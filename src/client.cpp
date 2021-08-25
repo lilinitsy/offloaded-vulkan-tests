@@ -13,7 +13,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-
+#include <arpa/inet.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -113,9 +113,10 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			//.sin_addr	= htonl(0xc0a80002),
+			.sin_addr	= inet_addr("160.94.179.160"),
 		};
 
+		//inet_pton(AF_INET, "silo.remexre.xyz", &(server_address.sin_addr));
 
 		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(server_address));
 		if(connect_result == -1)
@@ -1040,17 +1041,21 @@ struct DeviceRenderer
 
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
+			int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
 
 
 			// The pthread_join isn't actually waiting here
 			// Try joining before calling setup_command_buffers() 
-
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
+			printf("First renderpass joined\n");
+			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+			printf("Rec image joind\n");
 
 			//sleep(1);
 
 			// Second renderpass: Fullscreen quad draw
 			{
+				printf("Second renderpass begun\n");
 				VkClearValue clear_values[2];
 				clear_values[0].color		 = {0.0f, 0.0f, 0.0f, 1.0f};
 				clear_values[1].depthStencil = {1.0f, 0};
@@ -1122,11 +1127,7 @@ struct DeviceRenderer
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
 		// Make a thread for the swapchain image
-		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
-		pthread_join(vk_pthread_t.rec_image_thread, nullptr);
-
 		setup_command_buffers();
-		//pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -1200,7 +1201,7 @@ struct DeviceRenderer
 
 		// Create buffer to read from tcp socket
 		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
-		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
+		uint32_t servbuf[num_bytes];
 
 		// Receive & map memory
 		VkDeviceSize memmap_offset = 0;
