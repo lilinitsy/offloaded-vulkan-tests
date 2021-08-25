@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <arpa/inet.h>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -13,7 +14,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-#include <arpa/inet.h>
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -1041,11 +1041,11 @@ struct DeviceRenderer
 
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
-			int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
+			int receive_image_thread_create	   = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
 
 
 			// The pthread_join isn't actually waiting here
-			// Try joining before calling setup_command_buffers() 
+			// Try joining before calling setup_command_buffers()
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
 			printf("First renderpass joined\n");
 			pthread_join(vk_pthread_t.rec_image_thread, nullptr);
@@ -1210,36 +1210,36 @@ struct DeviceRenderer
 		for(uint16_t i = 0; i < 4; i++)
 		{
 			size_t servbufidx = 0;
-			do
+
+			int server_read = recv(dr->client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
+
+			if(server_read != -1)
 			{
-				ssize_t server_read = read(dr->client.socket_fd, &servbuf[servbufidx], num_bytes - servbufidx);
-				servbufidx += server_read;
-			} while(servbufidx < num_bytes);
+				printf("Read %d\t%zu\n", i, servbufidx);
 
-			printf("Read %d\t%zu\n", i, servbufidx);
+				printf("memmap offset in loop: %zu\n", memmap_offset);
+				vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
+				memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);
+				vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
+				memmap_offset += num_bytes;
 
-			printf("memmap offset in loop: %zu\n", memmap_offset);
-			vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
-			memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);	
-			vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
-			memmap_offset += num_bytes;
-
-			// write to ppm
-			for(uint32_t j = 0; j < 128; j++)
-			{
-				uint32_t *row = (uint32_t*) dr->server_image_data;
-				for(uint32_t x = 0; x < SERVERWIDTH; x++)
+				// write to ppm
+				for(uint32_t j = 0; j < 128; j++)
 				{
-					file.write((char*) row, 3);
-					row++;
+					uint32_t *row = (uint32_t *) dr->server_image_data;
+					for(uint32_t x = 0; x < SERVERWIDTH; x++)
+					{
+						file.write((char *) row, 3);
+						row++;
+					}
+
+					dr->server_image_data += num_bytes / 128;
 				}
 
-				dr->server_image_data += num_bytes / 128;
+				// Transmit to server that code was written
+				char end_line_code[1] = {'d'};
+				write(dr->client.socket_fd, end_line_code, 1);
 			}
-
-			// Transmit to server that code was written
-			char end_line_code[1] = {'d'};
-			write(dr->client.socket_fd, end_line_code, 1);
 		}
 		printf("memmap offset outside loop: %zu\n", memmap_offset);
 
