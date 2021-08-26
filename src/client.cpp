@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <arpa/inet.h>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -13,7 +14,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -113,9 +113,10 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			//.sin_addr	= htonl(0xc0a80002),
+			.sin_addr	= inet_addr("160.94.179.160"),
 		};
 
+		//inet_pton(AF_INET, "silo.remexre.xyz", &(server_address.sin_addr));
 
 		int connect_result = connect(socket_fd, (sockaddr *) &server_address, sizeof(server_address));
 		if(connect_result == -1)
@@ -146,13 +147,13 @@ struct DeviceRenderer
 	VulkanSwapchain swapchain;
 	VulkanRenderpass renderpass;
 
-	struct
+	struct PipelineLayouts
 	{
 		VkPipelineLayout model;
 		VkPipelineLayout fsquad;
 	} pipeline_layouts;
 
-	struct
+	struct Pipelines
 	{
 		VkPipeline model;
 		VkPipeline fsquad;
@@ -181,6 +182,8 @@ struct DeviceRenderer
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
 
+	char *server_image_data;
+
 	struct
 	{
 		VkDescriptorSetLayout model;
@@ -189,7 +192,7 @@ struct DeviceRenderer
 
 	VkDescriptorPool descriptor_pool;
 
-	struct
+	struct DescriptorSets
 	{
 		std::vector<VkDescriptorSet> model;
 		std::vector<VkDescriptorSet> fsquad;
@@ -197,7 +200,7 @@ struct DeviceRenderer
 
 
 	// Modeled from sascha's radialblur
-	struct
+	struct OffscreenPass
 	{
 		VkFramebuffer framebuffer;
 		VulkanAttachment colour_attachment;
@@ -213,6 +216,12 @@ struct DeviceRenderer
 	std::vector<VkFence> images_in_flight;
 	uint32_t current_frame = 0;
 	uint64_t numframes	   = 0;
+
+	struct
+	{
+		pthread_t rec_image_thread;
+		pthread_t first_renderpass_thread;
+	} vk_pthread_t;
 
 	Client client;
 
@@ -251,7 +260,7 @@ struct DeviceRenderer
 		initialize_ubos();
 		setup_descriptor_pool();
 		setup_descriptor_sets();
-		setup_command_buffers();
+		//setup_command_buffers();
 		setup_vk_async();
 
 		create_copy_image_buffer();
@@ -962,6 +971,54 @@ struct DeviceRenderer
 		}
 	}
 
+	struct FirstRenderPassArgs
+	{
+		OffscreenPass offscreen_pass;
+		VulkanSwapchain swapchain;
+		Pipelines pipelines;
+		VkCommandBuffer cmdbuf;
+		VkDescriptorSet descriptor_set;
+		VkBuffer vbo;
+		VkBuffer ibo;
+		PipelineLayouts pipeline_layouts;
+		Model model;
+	};
+
+	static void *execute_first_renderpass(void *renderpassargs)
+	{
+		FirstRenderPassArgs *args = (FirstRenderPassArgs *) renderpassargs;
+
+		// First pass: The offscreen rendering
+		{
+			VkClearValue clear_values[2];
+			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
+			clear_values[1].depthStencil		= {1.0f, 0};
+			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(args->offscreen_pass.renderpass,
+																		   args->offscreen_pass.framebuffer,
+																		   {0, 0},
+																		   args->swapchain.swapchain_extent,
+																		   2, clear_values);
+
+			vkCmdBeginRenderPass(args->cmdbuf, &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
+
+			vkCmdBindPipeline(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, args->pipelines.model);
+
+			VkBuffer vertex_buffers[] = {args->vbo};
+			VkDeviceSize offsets[]	  = {0};
+
+			vkCmdBindVertexBuffers(args->cmdbuf, 0, 1, vertex_buffers, offsets);
+			vkCmdBindIndexBuffer(args->cmdbuf, args->ibo, 0, VK_INDEX_TYPE_UINT32);
+
+			vkCmdBindDescriptorSets(args->cmdbuf, VK_PIPELINE_BIND_POINT_GRAPHICS, args->pipeline_layouts.model, 0, 1, &args->descriptor_set, 0, nullptr);
+
+			vkCmdDrawIndexed(args->cmdbuf, args->model.indices.size(), 1, 0, 0, 0);
+
+			vkCmdEndRenderPass(args->cmdbuf);
+		}
+
+		return nullptr;
+	}
+
 	void setup_command_buffers()
 	{
 		command_buffers.resize(swapchain.framebuffers.size());
@@ -982,36 +1039,28 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
 
-			// First pass: The offscreen rendering
+			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
+			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
+
+
+			// The pthread_join isn't actually waiting here
+			// Try joining before calling setup_command_buffers()
+
+			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
+			printf("First renderpass joined\n");
+
+			if(i == 0)
 			{
-				VkClearValue clear_values[2];
-				clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
-				clear_values[1].depthStencil		= {1.0f, 0};
-				VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(offscreen_pass.renderpass,
-																			   offscreen_pass.framebuffer,
-																			   {0, 0},
-																			   swapchain.swapchain_extent,
-																			   2, clear_values);
-
-				vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
-
-				vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipelines.model);
-
-				VkBuffer vertex_buffers[] = {vbo};
-				VkDeviceSize offsets[]	  = {0};
-
-				vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-				vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
-
-				vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layouts.model, 0, 1, &descriptor_sets.model[i], 0, nullptr);
-
-				vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
-
-				vkCmdEndRenderPass(command_buffers[i]);
+				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
+				printf("Rec image joind\n");
 			}
+
+
+			//sleep(1);
 
 			// Second renderpass: Fullscreen quad draw
 			{
+				printf("Second renderpass begun\n");
 				VkClearValue clear_values[2];
 				clear_values[0].color		 = {0.0f, 0.0f, 0.0f, 1.0f};
 				clear_values[1].depthStencil = {1.0f, 0};
@@ -1063,6 +1112,8 @@ struct DeviceRenderer
 
 	void render_complete_frame()
 	{
+		auto start = std::chrono::high_resolution_clock::now();
+
 		timeval timer_start;
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
@@ -1077,11 +1128,13 @@ struct DeviceRenderer
 			camera.front.y,
 			camera.front.z,
 		};
-		write(client.socket_fd, camera_data, 6 * sizeof(float));
+		//write(client.socket_fd, camera_data, 6 * sizeof(float));
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
-		receive_swapchain_image();
+		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
+		// Make a thread for the swapchain image
+		setup_command_buffers();
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -1133,29 +1186,31 @@ struct DeviceRenderer
 		gettimeofday(&timer_end, nullptr);
 
 
-		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		printf("numframe: %lu\tframe dt: %f\n", numframes, (dt / 1000000.0f));
+		auto finish										  = std::chrono::high_resolution_clock::now();
+		std::chrono::duration<double, std::milli> elapsed = finish - start;
+		std::cout << "Elapsed Time: " << elapsed.count() << " ms" << std::endl;
+		std::cout << "numframe: " << numframes << "\tframe dt: " << elapsed.count() << std::endl;
 
 		numframes++;
 	}
 
-
 	// Test function adapted from sasha's example screenshot
-	void receive_swapchain_image()
+	static void *receive_swapchain_image(void *devicerenderer)
 	{
-		char *data;
-		VkDeviceSize memcpy_offset = 0;
-		std::string filename	   = "tmpclient" + std::to_string(numframes) + ".ppm";
+		DeviceRenderer *dr = (DeviceRenderer *) devicerenderer;
 
-		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
+		VkDeviceSize memcpy_offset = 0;
+		std::string filename	   = "tmpclient" + std::to_string(dr->numframes) + ".ppm";
+
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";*/
+			 << 255 << "\n";
 
 		// Create buffer to read from tcp socket
-		uint32_t servbuf[SERVERWIDTH * SERVERHEIGHT];
 		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
+		uint32_t servbuf[num_bytes];
 
 		// Receive & map memory
 		VkDeviceSize memmap_offset = 0;
@@ -1164,29 +1219,43 @@ struct DeviceRenderer
 		for(uint16_t i = 0; i < 4; i++)
 		{
 			size_t servbufidx = 0;
-			do
+
+			int server_read = recv(dr->client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
+
+			if(server_read != -1)
 			{
-				ssize_t server_read = read(client.socket_fd, &servbuf[servbufidx], num_bytes - servbufidx);
-				servbufidx += server_read;
-			} while(servbufidx < num_bytes);
+				vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
+				memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);
+				vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
+				memmap_offset += num_bytes;
 
-			vkMapMemory(device.logical_device, image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &data);
-			memcpy(data, servbuf, (size_t) num_bytes);
-			vkUnmapMemory(device.logical_device, image_buffer_memory);
-			memmap_offset += num_bytes;
+				// write to ppm
+				/*for(uint32_t j = 0; j < 128; j++)
+				{
+					uint32_t *row = (uint32_t *) dr->server_image_data;
+					for(uint32_t x = 0; x < SERVERWIDTH; x++)
+					{
+						file.write((char *) row, 3);
+						row++;
+					}
 
-			// Transmit to server that code was written
-			char end_line_code[1] = {'d'};
-			write(client.socket_fd, end_line_code, 1);
+					dr->server_image_data += num_bytes / 128;
+				}*/
+
+				// Transmit to server that code was written
+				char end_line_code[1] = {'d'};
+				write(dr->client.socket_fd, end_line_code, 1);
+			}
 		}
+		printf("memmap offset outside loop: %zu\n", memmap_offset);
 
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
-		VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
+		VkCommandBuffer copy_cmdbuf = begin_command_buffer(dr->device, dr->command_pool);
 
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-								server_colour_attachment.image,
+		transition_image_layout(dr->device, dr->command_pool, copy_cmdbuf,
+								dr->server_colour_attachment.image,
 								VK_ACCESS_MEMORY_READ_BIT,				  // src access_mask
 								VK_ACCESS_TRANSFER_WRITE_BIT,			  // dst access_mask
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // current layout
@@ -1213,14 +1282,14 @@ struct DeviceRenderer
 
 		// Perform the copy
 		vkCmdCopyBufferToImage(copy_cmdbuf,
-							   image_buffer,
-							   server_colour_attachment.image,
+							   dr->image_buffer,
+							   dr->server_colour_attachment.image,
 							   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 							   1, &copy_region);
 
 		// Transition swapchain image back
-		transition_image_layout(device, command_pool, copy_cmdbuf,
-								server_colour_attachment.image,
+		transition_image_layout(dr->device, dr->command_pool, copy_cmdbuf,
+								dr->server_colour_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,			  // src access mask
 								VK_ACCESS_MEMORY_READ_BIT,				  // dst access mask
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // current layout
@@ -1228,7 +1297,9 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
-		end_command_buffer(device, command_pool, copy_cmdbuf);
+		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
+
+		return nullptr;
 	}
 
 

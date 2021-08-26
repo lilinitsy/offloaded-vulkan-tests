@@ -57,11 +57,11 @@ struct ImagePacket
 	{
 		vkMapMemory(device.logical_device, memory, 0, VK_WHOLE_SIZE, 0, (void **) &data);
 		data += subresource_layout.offset;
+		vkUnmapMemory(device.logical_device, memory);
 	}
 
 	void destroy(VulkanDevice device)
 	{
-		vkUnmapMemory(device.logical_device, memory);
 		vkFreeMemory(device.logical_device, memory, nullptr);
 		vkDestroyImage(device.logical_device, image, nullptr);
 	}
