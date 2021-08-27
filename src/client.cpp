@@ -15,6 +15,7 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
+#include <fcntl.h>
 
 
 #define GLFW_INCLUDE_VULKAN
@@ -108,6 +109,14 @@ struct Client
 		if(socket_fd == -1)
 		{
 			throw std::runtime_error("Could not create a socket");
+		}
+
+		// Set socket non blocking
+		int nonblockinresult = fcntl(socket_fd, F_GETFL) & O_NONBLOCK;
+
+		if(nonblockinresult == -1)
+		{
+			throw std::runtime_error("Could not set client socket file descriptor to non blocking");
 		}
 	}
 
