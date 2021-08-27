@@ -10,10 +10,13 @@
 #include <set>
 #include <stdexcept>
 #include <stdio.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
+
+
 #define GLFW_INCLUDE_VULKAN
 #include <GLFW/glfw3.h>
 
@@ -113,7 +116,7 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			.sin_addr	= inet_addr("160.94.179.160"),
+			//.sin_addr	= inet_addr("160.94.179.160"),
 		};
 
 		//inet_pton(AF_INET, "silo.remexre.xyz", &(server_address.sin_addr));
@@ -1047,12 +1050,10 @@ struct DeviceRenderer
 			// Try joining before calling setup_command_buffers()
 
 			pthread_join(vk_pthread_t.first_renderpass_thread, nullptr);
-			printf("First renderpass joined\n");
 
 			if(i == 0)
 			{
 				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
-				printf("Rec image joind\n");
 			}
 
 
@@ -1060,7 +1061,6 @@ struct DeviceRenderer
 
 			// Second renderpass: Fullscreen quad draw
 			{
-				printf("Second renderpass begun\n");
 				VkClearValue clear_values[2];
 				clear_values[0].color		 = {0.0f, 0.0f, 0.0f, 1.0f};
 				clear_values[1].depthStencil = {1.0f, 0};
@@ -1112,11 +1112,11 @@ struct DeviceRenderer
 
 	void render_complete_frame()
 	{
-		auto start = std::chrono::high_resolution_clock::now();
+		std::chrono::_V2::system_clock::time_point start = std::chrono::high_resolution_clock::now();
 
-		timeval timer_start;
-		timeval timer_end;
-		gettimeofday(&timer_start, nullptr);
+		// Make a thread for the swapchain image
+		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
+
 
 		// Write camera data (position, front) to server
 		float camera_data[6] = {
@@ -1132,9 +1132,7 @@ struct DeviceRenderer
 
 		vkWaitForFences(device.logical_device, 1, &in_flight_fences[current_frame], VK_TRUE, UINT64_MAX);
 
-		int receive_image_thread_create = pthread_create(&vk_pthread_t.rec_image_thread, nullptr, DeviceRenderer::receive_swapchain_image, this);
-		// Make a thread for the swapchain image
-		setup_command_buffers();
+
 
 		uint32_t image_index;
 		VkResult result = vkAcquireNextImageKHR(device.logical_device, swapchain.swapchain, UINT64_MAX, image_available_semaphores[current_frame], VK_NULL_HANDLE, &image_index);
@@ -1147,6 +1145,9 @@ struct DeviceRenderer
 		}
 
 		update_ubos(image_index);
+
+		setup_command_buffers();
+
 
 		if(images_in_flight[image_index] != VK_NULL_HANDLE)
 		{
@@ -1180,13 +1181,9 @@ struct DeviceRenderer
 
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
-
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
-		gettimeofday(&timer_end, nullptr);
-
-
-		auto finish										  = std::chrono::high_resolution_clock::now();
+		std::chrono::_V2::system_clock::time_point finish = std::chrono::high_resolution_clock::now();
 		std::chrono::duration<double, std::milli> elapsed = finish - start;
 		std::cout << "Elapsed Time: " << elapsed.count() << " ms" << std::endl;
 		std::cout << "numframe: " << numframes << "\tframe dt: " << elapsed.count() << std::endl;
