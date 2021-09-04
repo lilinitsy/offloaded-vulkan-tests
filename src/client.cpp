@@ -4,6 +4,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
@@ -15,7 +16,6 @@
 #include <sys/time.h>
 #include <unistd.h>
 #include <vector>
-#include <fcntl.h>
 
 
 #define GLFW_INCLUDE_VULKAN
@@ -99,6 +99,9 @@ void mouse_callback(GLFWwindow *window, double xpos, double ypos)
 }
 
 
+static float totaltime;
+
+
 struct Client
 {
 	int socket_fd;
@@ -112,12 +115,12 @@ struct Client
 		}
 
 		// Set socket non blocking
-		int nonblockinresult = fcntl(socket_fd, F_GETFL) & O_NONBLOCK;
+		/*int nonblockinresult = fcntl(socket_fd, F_GETFL) & O_NONBLOCK;
 
 		if(nonblockinresult == -1)
 		{
 			throw std::runtime_error("Could not set client socket file descriptor to non blocking");
-		}
+		}*/
 	}
 
 	void connect_to_server(int port)
@@ -1196,8 +1199,11 @@ struct DeviceRenderer
 		std::chrono::duration<double, std::milli> elapsed = finish - start;
 		std::cout << "Elapsed Time: " << elapsed.count() << " ms" << std::endl;
 		std::cout << "numframe: " << numframes << "\tframe dt: " << elapsed.count() << std::endl;
-
 		numframes++;
+
+		totaltime += elapsed.count();
+		float avgfps = (1000.0f) / (totaltime / numframes);
+		std::cout << "avg fps: " << avgfps << std::endl;
 	}
 
 	// Test function adapted from sasha's example screenshot
