@@ -5,3 +5,6 @@ rendertest
 *.o
 src/client
 src/rendertest
+src/log
+result
+*.coz
