@@ -29,6 +29,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <coz.h>
+
 #include "camera.h"
 #include "defines.h"
 #include "utils.h"
@@ -185,8 +187,6 @@ struct DeviceRenderer
 	VulkanAttachment server_colour_attachment;
 	VkSampler server_frame_sampler;
 
-	VulkanAttachment depth_attachment;
-
 	VulkanAttachment texcolour_attachment;
 	VkSampler tex_sampler;
 
@@ -295,15 +295,45 @@ struct DeviceRenderer
 		vkDeviceWaitIdle(device.logical_device);
 	}
 
+	void destroy_vulkan_attachment(VulkanAttachment attachment)
+	{
+		vkDestroyImageView(device.logical_device, attachment.image_view, nullptr);
+		vkDestroyImage(device.logical_device, attachment.image, nullptr);
+		vkFreeMemory(device.logical_device, attachment.memory, nullptr);
+	}
+
+	void destroy_offscreen_pass()
+	{
+		vkDestroyFramebuffer(device.logical_device, offscreen_pass.framebuffer, nullptr);
+		vkDestroySampler(device.logical_device, offscreen_pass.sampler, nullptr);
+		destroy_vulkan_attachment(offscreen_pass.colour_attachment);
+		destroy_vulkan_attachment(offscreen_pass.depth_attachment);
+		vkDestroyRenderPass(device.logical_device, offscreen_pass.renderpass, nullptr);
+	}
+
 	void cleanup()
 	{
 		cleanup_swapchain();
-		vkDestroyImageView(device.logical_device, server_colour_attachment.image_view, nullptr);
-		vkDestroySampler(device.logical_device, server_frame_sampler, nullptr);
-		vkDestroyImage(device.logical_device, server_colour_attachment.image, nullptr);
-		vkFreeMemory(device.logical_device, server_colour_attachment.memory, nullptr);
 
+		// Destroy server frame sampler and server colour attachment
+		vkDestroySampler(device.logical_device, server_frame_sampler, nullptr);
+		destroy_vulkan_attachment(server_colour_attachment);
+
+		// Destroy tex colour attachment & sampler
+		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
+		destroy_vulkan_attachment(texcolour_attachment);
+
+		// Destroy fsquad pipeline state
+		vkDestroyPipeline(device.logical_device, pipelines.fsquad, nullptr);
+		vkDestroyPipelineLayout(device.logical_device, pipeline_layouts.fsquad, nullptr);
+
+		// Destroy offscreen pass related stuff
+		destroy_offscreen_pass();
+
+
+		// Destroy descriptor set layouts
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.model, nullptr);
+		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.fsquad, nullptr);
 
 		vkDestroyBuffer(device.logical_device, vbo, nullptr);
 		vkDestroyBuffer(device.logical_device, ibo, nullptr);
@@ -319,18 +349,13 @@ struct DeviceRenderer
 
 		vkDestroyCommandPool(device.logical_device, command_pool, nullptr);
 
-		for(uint32_t i = 0; i < swapchain.framebuffers.size(); i++)
-		{
-			vkDestroyFramebuffer(device.logical_device, swapchain.framebuffers[i], nullptr);
-		}
-
-		vkDestroyBuffer(device.logical_device, vbo, nullptr);
-		vkFreeMemory(device.logical_device, vbo_mem, nullptr);
-		device.destroy();
 
 		// Destroy image buffer
 		vkDestroyBuffer(device.logical_device, image_buffer, nullptr);
 		vkFreeMemory(device.logical_device, image_buffer_memory, nullptr);
+
+		device.destroy();
+
 
 		if(ENABLE_VALIDATION_LAYERS)
 		{
@@ -369,12 +394,6 @@ struct DeviceRenderer
 		for(uint32_t i = 0; i < swapchain.image_views.size(); i++)
 		{
 			vkDestroyImageView(device.logical_device, swapchain.image_views[i], nullptr);
-		}
-
-		for(uint32_t i = 0; i < swapchain.images.size(); i++)
-		{
-			vkDestroyBuffer(device.logical_device, ubos[i], nullptr);
-			vkFreeMemory(device.logical_device, ubos_mem[i], nullptr);
 		}
 
 		vkDestroySwapchainKHR(device.logical_device, swapchain.swapchain, nullptr);
@@ -909,19 +928,22 @@ struct DeviceRenderer
 			throw std::runtime_error("failed to create graphics pipeline!");
 		}
 
+		vkDestroyShaderModule(device.logical_device, fragment_shader_module, nullptr);
+		vkDestroyShaderModule(device.logical_device, vertex_shader_module, nullptr);
+
 
 		// ========================================================================
 		//							SETUP FOR FSQUAD SHADER
 		// ========================================================================
 
-		vertex_shader_code		   = parse_shader_file("shaders/vertexfsquadclient.spv");
-		fragment_shader_code	   = parse_shader_file("shaders/fragmentfsquadclient.spv");
-		vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
-		fragment_shader_module	   = setup_shader_module(fragment_shader_code, device);
-		vertex_shader_stage_info   = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertex_shader_module, "main");
-		fragment_shader_stage_info = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader_module, "main");
-		shader_stages[0]		   = vertex_shader_stage_info;
-		shader_stages[1]		   = fragment_shader_stage_info;
+		vertex_shader_code							 = parse_shader_file("shaders/vertexfsquadclient.spv");
+		fragment_shader_code						 = parse_shader_file("shaders/fragmentfsquadclient.spv");
+		VkShaderModule vertex_shader_module_fsquad	 = setup_shader_module(vertex_shader_code, device);
+		VkShaderModule fragment_shader_module_fsquad = setup_shader_module(fragment_shader_code, device);
+		vertex_shader_stage_info					 = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertex_shader_module_fsquad, "main");
+		fragment_shader_stage_info					 = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_FRAGMENT_BIT, fragment_shader_module_fsquad, "main");
+		shader_stages[0]							 = vertex_shader_stage_info;
+		shader_stages[1]							 = fragment_shader_stage_info;
 
 		VkPipelineVertexInputStateCreateInfo empty_vertex_input_info = {};
 		empty_vertex_input_info.sType								 = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
@@ -945,8 +967,8 @@ struct DeviceRenderer
 			throw std::runtime_error("Failed to create graphics pipeline!");
 		}
 
-		vkDestroyShaderModule(device.logical_device, fragment_shader_module, nullptr);
-		vkDestroyShaderModule(device.logical_device, vertex_shader_module, nullptr);
+		vkDestroyShaderModule(device.logical_device, vertex_shader_module_fsquad, nullptr);
+		vkDestroyShaderModule(device.logical_device, fragment_shader_module_fsquad, nullptr);
 	}
 
 	void setup_framebuffers()
@@ -1054,9 +1076,11 @@ struct DeviceRenderer
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
 
+
+			COZ_BEGIN("execute_first_renderpass");
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
-
+			COZ_END("execute_first_renderpass");
 
 			// The pthread_join isn't actually waiting here
 			// Try joining before calling setup_command_buffers()
