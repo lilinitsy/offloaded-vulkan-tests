@@ -8,3 +8,4 @@ src/rendertest
 src/log
 result
 *.coz
+.ccls-cache
