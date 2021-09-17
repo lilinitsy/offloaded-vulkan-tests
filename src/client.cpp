@@ -1024,6 +1024,8 @@ struct DeviceRenderer
 
 	static void *execute_first_renderpass(void *renderpassargs)
 	{
+		COZ_BEGIN("execute_first_renderpass");
+
 		FirstRenderPassArgs *args = (FirstRenderPassArgs *) renderpassargs;
 
 		// First pass: The offscreen rendering
@@ -1054,6 +1056,8 @@ struct DeviceRenderer
 			vkCmdEndRenderPass(args->cmdbuf);
 		}
 
+		COZ_END("execute_first_renderpass");
+
 		return nullptr;
 	}
 
@@ -1077,7 +1081,6 @@ struct DeviceRenderer
 			}
 
 
-			COZ_BEGIN("execute_first_renderpass");
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
 
@@ -1090,11 +1093,10 @@ struct DeviceRenderer
 			{
 				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 			}
-			COZ_END("execute_first_renderpass");
 
 
 			//sleep(1);
-
+			COZ_BEGIN("fsquad_renderpass")
 			// Second renderpass: Fullscreen quad draw
 			{
 				VkClearValue clear_values[2];
@@ -1114,6 +1116,7 @@ struct DeviceRenderer
 				vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 				vkCmdEndRenderPass(command_buffers[i]);
 			}
+			COZ_END("fsquad_renderpass");
 
 
 			if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS)
@@ -1233,16 +1236,17 @@ struct DeviceRenderer
 	// Test function adapted from sasha's example screenshot
 	static void *receive_swapchain_image(void *devicerenderer)
 	{
+		COZ_BEGIN("network_receive");
 		DeviceRenderer *dr = (DeviceRenderer *) devicerenderer;
 
 		VkDeviceSize memcpy_offset = 0;
-		std::string filename	   = "tmpclient" + std::to_string(dr->numframes) + ".ppm";
+		/*std::string filename	   = "tmpclient" + std::to_string(dr->numframes) + ".ppm";
 
 		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";
+			 << 255 << "\n";*/
 
 		// Create buffer to read from tcp socket
 		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
@@ -1284,9 +1288,9 @@ struct DeviceRenderer
 		}
 
 		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
+		COZ_END("network_receive");
 
-		printf("memmap offset outside loop: %zu\n", memmap_offset);
-
+		COZ_BEGIN("copy_network_image");
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(dr->device, dr->command_pool);
@@ -1336,6 +1340,7 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
 		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
+		COZ_END("copy_network_image");
 
 		return nullptr;
 	}
