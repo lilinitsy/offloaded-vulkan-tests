@@ -978,6 +978,7 @@ struct DeviceRenderer
 		// ========================================================================
 
 		swapchain.framebuffers.resize(swapchain.image_views.size());
+		command_buffers.resize(swapchain.framebuffers.size());
 
 		for(size_t i = 0; i < swapchain.image_views.size(); i++)
 		{
@@ -1058,7 +1059,6 @@ struct DeviceRenderer
 
 	void setup_command_buffers()
 	{
-		command_buffers.resize(swapchain.framebuffers.size());
 
 		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, command_buffers.size());
 
@@ -1080,7 +1080,6 @@ struct DeviceRenderer
 			COZ_BEGIN("execute_first_renderpass");
 			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
-			COZ_END("execute_first_renderpass");
 
 			// The pthread_join isn't actually waiting here
 			// Try joining before calling setup_command_buffers()
@@ -1091,6 +1090,7 @@ struct DeviceRenderer
 			{
 				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 			}
+			COZ_END("execute_first_renderpass");
 
 
 			//sleep(1);
@@ -1250,6 +1250,7 @@ struct DeviceRenderer
 
 		// Receive & map memory
 		VkDeviceSize memmap_offset = 0;
+		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes * 4, 0, (void **) &dr->server_image_data);
 
 		// Map in batches of 128 rows
 		for(uint16_t i = 0; i < 4; i++)
@@ -1260,9 +1261,7 @@ struct DeviceRenderer
 
 			if(server_read != -1)
 			{
-				vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
 				memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);
-				vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
 				memmap_offset += num_bytes;
 
 				// write to ppm
@@ -1283,6 +1282,9 @@ struct DeviceRenderer
 				write(dr->client.socket_fd, end_line_code, 1);
 			}
 		}
+
+		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
+
 		printf("memmap offset outside loop: %zu\n", memmap_offset);
 
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
