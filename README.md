@@ -199,7 +199,7 @@ In the second renderpass, it renders a fullscreen quad directly to the swapchain
 
 The code for this rendering loop is very simple, because in Vulkan, the bulk of the hard stuff happens elsewhere, outside the main rendering loop.
 
-Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it got around 26fps, with some weird memory / synchronization issues over the network making the server display quite buggy.
+Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 26fps (300Mbit/s wifi connection).
 
 ![Running frame](https://github.com/lilinitsy/offloaded-vulkan-tests/blob/separate-renderpasses/screenshots/alphascrn.png)
 
@@ -208,7 +208,8 @@ The models come from a 3D scan of a friend of mine (rendered by the server), and
 
 ## Issues To Be Fixed
 Notable issues that should be fixed include:
-- Sending the server frame as one 512x512 packet instead of scanline packets
+- ~~Sending the server frame as one 512x512 packet instead of scanline packets~~ Done.
+- Test sending differently sized tiles, including perhaps not updating every part of the image, but only portions that change.
 - Async on the server to have one thread perform the copy and send, one thread handling rendering, and one thread waiting on UBO input from the client (mouse, keyboard) to reduce the overhead from a serial pipeline
 - ~~Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass)~~, and one thread possibly to send the UBO's over. (Partially done, the UBO's being sent are currently unhandled).
 - Fix the RGB-BGR translation that happens when the server's frame is sent to the client (minor, unconcerned)
