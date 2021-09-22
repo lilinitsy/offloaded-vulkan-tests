@@ -201,7 +201,7 @@ In the second renderpass, it renders a fullscreen quad directly to the swapchain
 
 The code for this rendering loop is very simple, because in Vulkan, the bulk of the hard stuff happens elsewhere, outside the main rendering loop.
 
-Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 26fps (300Mbit/s wifi connection).
+Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 16-17 fps on around a 240Mbit/s wifi connection -- this is currently while sending the server's alpha value and without concurrent command buffer writing, both of which are hits that can be alleviated.
 
 ![Running frame](https://github.com/lilinitsy/offloaded-vulkan-tests/blob/separate-renderpasses/screenshots/alphascrn.png)
 
