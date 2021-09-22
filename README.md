@@ -10,7 +10,7 @@ The client renders the entire scene, but at a lower resolution and upscales with
 The server frame is rendered at the center of the client's frame with a fullscreen quad.
 
 ## Current State
-In this day of our [Lord](https://youtu.be/BlSinvbNqIA?t=34), there are some features missing: First of all, input from client to server to move position and camera rotation is disabled, because I have very little async to do this without destroying runtime. The fullscreen quad also stretches out the server image to display it onto a 1920x1080, which looks awful and is on the TODO. Foveated rendering is unimplemented. Running over a local TCP socket is fine, but over an actual network seems to produce odd image artifacting bugs. Everything described is the ideal to-come description, although much of it still applies in the current state.
+In this day of our [Lord](https://youtu.be/BlSinvbNqIA?t=34), there are some features missing: First of all, input from client to server to move position and camera rotation is disabled, because I have very little async to do this without destroying runtime. The fullscreen quad also stretches out the server image to display it onto a 1920x1080, which looks awful and is on the TODO. Foveated rendering is unimplemented. Everything described is the ideal to-come description, although much of it still applies in the current state.
 
 Streaming the entire frame, fully rendered, is typically not possible due to consumer bandwidth limitations, so workarounds must be used.
 These can be:
@@ -19,14 +19,14 @@ These can be:
 These typically have a high powered GPU working on the server to perform the inititial rendering of the subsampled frame, and then have a lot of even more high-powered GPU's to perform some kind of TSAA-style inference -- the problem with this is that they also require some very complex, trained AI, and need a lot of compute power to do the inference in real-time.
 
 ## Advantages of this approach
-- Video frames are going to be lower fidelity, which can be extra unpleasant in VR, so showing rendered frames for the highest quality is ideal.
+- Video frames are going to be lower fidelity, which can be extra unpleasant in VR and lose some details critical for gaming, so showing rendered frames for the highest quality is ideal.
 - This is a generalizable approach that should be implementable into a lot of applications, and utilizes two GPU's (essentially) to do some load scheduling.
 
 ## Probable Disadvantages of this approach
 - To compute the same frame for the server and the client, they both need to keep a copy of the game's vertex data. 
-In the context of a game with stochastic behaviour, this means that the stochastic behaviour must be modeled across both "copies" of the game, increasing the bandwidth beyond just the rendered frames. 
+In the context of a game with stochastic behaviour, this means that the stochastic behaviour must be modeled across both "copies" of the game, increasing the bandwidth beyond just the rendered frames - that or send any random variables across the network as well. 
 - Mouse and keyboard I/O from the client to server will probably need some sort of blocking to upload camera position and UBO's.
-This is annoying and slow if single-threaded (like it is rn), and fuck async in C++.
+This is annoying and slow if single-threaded, and not exactly trivial to multithread.
 
 ## Vulkan Walkthrouh
 Here, I'll detail the important parts of the vulkan setup.
@@ -48,7 +48,7 @@ VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE
 This is defined in ``vk_swapchain.h``
 
 ### **Offscreen Pass** (Client)
-The client will need an extra renderpass, or a subpass using input attachments, which I opted not to use. 
+The client will need an extra renderpass.
 The first renderpass is an offscreen pass, meaning it won't render to the swapchain (its output won't be presented to the screen), but to another sampler which will be used as input for the second renderpass -- so this offscreen pass goes through all the vertex data and renders the subsampled, full image.
 This offscreen renderpass can be organized neatly like so:
 
@@ -65,7 +65,7 @@ struct
 ```
 
 Creating this renderpass is pretty straightforward; first, the colour and depth attachment descriptions and references are defined with the appropriate formats and whatnot. 
-Two subpass dependencies are used, and then the renderpass can be created with the defined VulkanAttachment's. 
+Two subpass dependencies are used, and then the renderpass can be created with the defined ``VulkanAttachment``'s. 
 Finally, the offscreen pass's framebuffer can be created, again using the two VulkanAttachment's image_views. 
 The ``sampler`` is used as input for the next renderpass, which will render to the swapchain.
 The setup for the entire offscreen pass happens in the ``setup_offscreen()`` function in ``client.cpp``.
@@ -101,11 +101,11 @@ struct ImagePacket
 	{
 		vkMapMemory(device.logical_device, memory, 0, VK_WHOLE_SIZE, 0, (void **) &data);
 		data += subresource_layout.offset;
+		vkUnmapMemory(device.logical_device, memory);
 	}
 
 	void destroy(VulkanDevice device)
 	{
-		vkUnmapMemory(device.logical_device, memory);
 		vkFreeMemory(device.logical_device, memory, nullptr);
 		vkDestroyImage(device.logical_device, image, nullptr);
 	}
@@ -189,6 +189,8 @@ This is just copying it into a *buffer* though, which needs to be copied into an
 This is done in a very similar way to how the swapchain image was copied on the server side.
 The colour attachment's image is transitioned to an appropriate layout (``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL``), copied to from a VkBuffer that had its memory mapped to that ``uint32_t`` buffer, and then the image is transitioned back to be read by the shader.
 
+In the current version of the code, this is done in four "quadrants" that are actually entire rows, with each set bein 1/4th the size of the server image. This can be changed around to find an ideal number of packets to send, or to easily introduce sending tiles, as may be ideal depending on other approaches involving sending diffs.
+
 
 ### **Putting Everything Together (command buffer setup)** (client)
 ``setup_command_buffers()`` in ``client.cpp`` is where the two renderpasses happen.
@@ -199,7 +201,7 @@ In the second renderpass, it renders a fullscreen quad directly to the swapchain
 
 The code for this rendering loop is very simple, because in Vulkan, the bulk of the hard stuff happens elsewhere, outside the main rendering loop.
 
-Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 26fps (300Mbit/s wifi connection).
+Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 16-17 fps on around a 240Mbit/s wifi connection -- this is currently while sending the server's alpha value and without concurrent command buffer writing, both of which are hits that can be alleviated.
 
 ![Running frame](https://github.com/lilinitsy/offloaded-vulkan-tests/blob/separate-renderpasses/screenshots/alphascrn.png)
 
@@ -214,4 +216,5 @@ Notable issues that should be fixed include:
 - ~~Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass)~~, and one thread possibly to send the UBO's over. (Partially done, the UBO's being sent are currently unhandled).
 - Fix the RGB-BGR translation that happens when the server's frame is sent to the client (minor, unconcerned)
 - Render the client's frame at a smaller resolution and have it upscaled in the second renderpass to perform some sort of foveated rendering
+- On the server, don't bother rendering to the swapchain images, and render to an RGB image to cut out the overhead from the probably unimportant alpha component.
 - "rewrite it in rust"????
