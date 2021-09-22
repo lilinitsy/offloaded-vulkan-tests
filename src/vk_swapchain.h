@@ -148,5 +148,12 @@ struct VulkanAttachment
 	VkImageView image_view;
 };
 
+void destroy_vulkan_attachment(VkDevice logical_device, VulkanAttachment attachment)
+{
+	vkDestroyImageView(logical_device, attachment.image_view, nullptr);
+	vkDestroyImage(logical_device, attachment.image, nullptr);
+	vkFreeMemory(logical_device, attachment.memory, nullptr);
+}
+
 
 #endif

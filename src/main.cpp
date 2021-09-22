@@ -62,8 +62,8 @@ struct ImagePacket
 
 	void destroy(VulkanDevice device)
 	{
-		vkFreeMemory(device.logical_device, memory, nullptr);
 		vkDestroyImage(device.logical_device, image, nullptr);
+		vkFreeMemory(device.logical_device, memory, nullptr);
 	}
 };
 
@@ -213,11 +213,9 @@ struct HostRenderer
 	{
 		cleanup_swapchain();
 
-		vkDestroyImageView(device.logical_device, colour_attachment.image_view, nullptr);
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
-		vkDestroyImage(device.logical_device, colour_attachment.image, nullptr);
-		vkFreeMemory(device.logical_device, colour_attachment.memory, nullptr);
-
+		destroy_vulkan_attachment(device.logical_device, colour_attachment);
+		destroy_vulkan_attachment(device.logical_device, depth_attachment);
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
 
 		vkDestroyBuffer(device.logical_device, vbo, nullptr);
@@ -234,13 +232,6 @@ struct HostRenderer
 
 		vkDestroyCommandPool(device.logical_device, command_pool, nullptr);
 
-		for(uint32_t i = 0; i < swapchain.framebuffers.size(); i++)
-		{
-			vkDestroyFramebuffer(device.logical_device, swapchain.framebuffers[i], nullptr);
-		}
-
-		vkDestroyBuffer(device.logical_device, vbo, nullptr);
-		vkFreeMemory(device.logical_device, vbo_mem, nullptr);
 		device.destroy();
 
 		if(ENABLE_VALIDATION_LAYERS)
@@ -280,12 +271,6 @@ struct HostRenderer
 		for(uint32_t i = 0; i < swapchain.image_views.size(); i++)
 		{
 			vkDestroyImageView(device.logical_device, swapchain.image_views[i], nullptr);
-		}
-
-		for(uint32_t i = 0; i < swapchain.images.size(); i++)
-		{
-			vkDestroyBuffer(device.logical_device, ubos[i], nullptr);
-			vkFreeMemory(device.logical_device, ubos_mem[i], nullptr);
 		}
 
 		vkDestroySwapchainKHR(device.logical_device, swapchain.swapchain, nullptr);

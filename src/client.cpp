@@ -295,19 +295,12 @@ struct DeviceRenderer
 		vkDeviceWaitIdle(device.logical_device);
 	}
 
-	void destroy_vulkan_attachment(VulkanAttachment attachment)
-	{
-		vkDestroyImageView(device.logical_device, attachment.image_view, nullptr);
-		vkDestroyImage(device.logical_device, attachment.image, nullptr);
-		vkFreeMemory(device.logical_device, attachment.memory, nullptr);
-	}
-
 	void destroy_offscreen_pass()
 	{
 		vkDestroyFramebuffer(device.logical_device, offscreen_pass.framebuffer, nullptr);
 		vkDestroySampler(device.logical_device, offscreen_pass.sampler, nullptr);
-		destroy_vulkan_attachment(offscreen_pass.colour_attachment);
-		destroy_vulkan_attachment(offscreen_pass.depth_attachment);
+		destroy_vulkan_attachment(device.logical_device, offscreen_pass.colour_attachment);
+		destroy_vulkan_attachment(device.logical_device, offscreen_pass.depth_attachment);
 		vkDestroyRenderPass(device.logical_device, offscreen_pass.renderpass, nullptr);
 	}
 
@@ -317,11 +310,11 @@ struct DeviceRenderer
 
 		// Destroy server frame sampler and server colour attachment
 		vkDestroySampler(device.logical_device, server_frame_sampler, nullptr);
-		destroy_vulkan_attachment(server_colour_attachment);
+		destroy_vulkan_attachment(device.logical_device, server_colour_attachment);
 
 		// Destroy tex colour attachment & sampler
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
-		destroy_vulkan_attachment(texcolour_attachment);
+		destroy_vulkan_attachment(device.logical_device, texcolour_attachment);
 
 		// Destroy fsquad pipeline state
 		vkDestroyPipeline(device.logical_device, pipelines.fsquad, nullptr);
