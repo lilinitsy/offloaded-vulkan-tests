@@ -138,7 +138,7 @@ struct HostRenderer
 	VkDeviceMemory vbo_mem;
 	VkDeviceMemory ibo_mem;
 
-	VulkanAttachment colour_attachment;
+	VulkanAttachment texcolour_attachment;
 	VkSampler tex_sampler;
 	VulkanAttachment depth_attachment;
 
@@ -214,7 +214,7 @@ struct HostRenderer
 		cleanup_swapchain();
 
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
-		destroy_vulkan_attachment(device.logical_device, colour_attachment);
+		destroy_vulkan_attachment(device.logical_device, texcolour_attachment);
 		destroy_vulkan_attachment(device.logical_device, depth_attachment);
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
 
@@ -377,7 +377,7 @@ struct HostRenderer
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, texcolour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
@@ -446,17 +446,17 @@ struct HostRenderer
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-					 colour_attachment.image,
-					 colour_attachment.memory);
-		transition_image_layout(device, command_pool, colour_attachment.image,
+					 texcolour_attachment.image,
+					 texcolour_attachment.memory);
+		transition_image_layout(device, command_pool, texcolour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		copy_buffer_to_image(device, command_pool, staging_buffer,
-							 colour_attachment.image,
+							 texcolour_attachment.image,
 							 texture_width,
 							 texture_height);
-		transition_image_layout(device, command_pool, colour_attachment.image,
+		transition_image_layout(device, command_pool, texcolour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -467,7 +467,7 @@ struct HostRenderer
 
 	void setup_texture_image()
 	{
-		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		texcolour_attachment.image_view = create_image_view(device.logical_device, texcolour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	void setup_sampler()
