@@ -1258,7 +1258,7 @@ struct DeviceRenderer
 
 			if(server_read != -1)
 			{
-				memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);
+				memcpy(dr->server_image_data + memmap_offset, servbuf, (size_t) num_bytes);
 				memmap_offset += num_bytes;
 
 				// write to ppm
