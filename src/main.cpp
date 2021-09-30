@@ -140,7 +140,16 @@ struct HostRenderer
 
 	VulkanAttachment texcolour_attachment;
 	VkSampler tex_sampler;
-	VulkanAttachment depth_attachment;
+
+	// Modeled from sascha's radialblur
+	struct OffscreenPass
+	{
+		VkFramebuffer framebuffer;
+		VulkanAttachment colour_attachment;
+		VulkanAttachment depth_attachment;
+		VkRenderPass renderpass;
+		VkSampler sampler;
+	} offscreen_pass;
 
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
@@ -178,9 +187,9 @@ struct HostRenderer
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
 		renderpass								  = VulkanRenderpass(device, swapchain);
 		setup_descriptor_set_layout();
+		setup_offscreen();
 		setup_graphics_pipeline();
 		setup_command_pool();
-		setup_depth();
 		setup_framebuffers();
 		setup_texture();
 		setup_texture_image();
@@ -215,7 +224,7 @@ struct HostRenderer
 
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
 		destroy_vulkan_attachment(device.logical_device, texcolour_attachment);
-		destroy_vulkan_attachment(device.logical_device, depth_attachment);
+		destroy_vulkan_attachment(device.logical_device, offscreen_pass.depth_attachment);
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
 
 		vkDestroyBuffer(device.logical_device, vbo, nullptr);
@@ -396,8 +405,8 @@ struct HostRenderer
 		VkFormat depth_format		  = device.find_format(formats, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
 
-		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_attachment.image, depth_attachment.memory);
-		depth_attachment.image_view = create_image_view(device.logical_device, depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, offscreen_pass.depth_attachment.image, offscreen_pass.depth_attachment.memory);
+		offscreen_pass.depth_attachment.image_view = create_image_view(device.logical_device, offscreen_pass.depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
 
@@ -521,6 +530,131 @@ struct HostRenderer
 	}
 
 
+	void setup_offscreen()
+	{
+		// Depth attachment
+		std::vector<VkFormat> formats = {VK_FORMAT_D32_SFLOAT, VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D24_UNORM_S8_UINT};
+		VkFormat depth_format		  = device.find_format(formats, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
+		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
+
+		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, offscreen_pass.depth_attachment.image, offscreen_pass.depth_attachment.memory);
+		offscreen_pass.depth_attachment.image_view = create_image_view(device.logical_device, offscreen_pass.depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+
+		// Colour attachment
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8_SRGB,
+					 extent,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 offscreen_pass.colour_attachment.image,
+					 offscreen_pass.colour_attachment.memory);
+
+		// Colour attachment image view
+		offscreen_pass.colour_attachment.image_view = create_image_view(device.logical_device, offscreen_pass.colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+
+		// Sampler for offscreen
+		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR,
+																VK_FILTER_LINEAR,
+																VK_SAMPLER_MIPMAP_MODE_LINEAR,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+																0.0f, 1.0f, 0.0f, 1.0f,
+																VK_BORDER_COLOR_INT_OPAQUE_BLACK);
+
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &offscreen_pass.sampler);
+		if(sampler_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen sampler");
+		}
+
+		// Renderpass creation
+		// actually I'm not sure the renderpass needs to be different...
+		std::array<VkAttachmentDescription, 2> attachment_descriptions = {};
+		attachment_descriptions[0]									   = {
+			.format			= VK_FORMAT_R8G8B8A8_SRGB,
+			.samples		= VK_SAMPLE_COUNT_1_BIT,
+			.loadOp			= VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp		= VK_ATTACHMENT_STORE_OP_STORE,
+			.stencilLoadOp	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout	= VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout	= VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+		};
+		attachment_descriptions[1] = {
+			.format			= depth_format,
+			.samples		= VK_SAMPLE_COUNT_1_BIT,
+			.loadOp			= VK_ATTACHMENT_LOAD_OP_CLEAR,
+			.storeOp		= VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.stencilLoadOp	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
+			.initialLayout	= VK_IMAGE_LAYOUT_UNDEFINED,
+			.finalLayout	= VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+		};
+
+		VkAttachmentReference colour_ref		 = {0, VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
+		VkAttachmentReference depth_ref			 = {1, VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL};
+		VkSubpassDescription subpass_description = {
+			.pipelineBindPoint		 = VK_PIPELINE_BIND_POINT_GRAPHICS,
+			.colorAttachmentCount	 = 1,
+			.pColorAttachments		 = &colour_ref,
+			.pDepthStencilAttachment = &depth_ref,
+		};
+
+		std::array<VkSubpassDependency, 2> dependencies;
+		dependencies[0] = {
+			.srcSubpass		 = VK_SUBPASS_EXTERNAL,
+			.dstSubpass		 = 0,
+			.srcStageMask	 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			.dstStageMask	 = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.srcAccessMask	 = VK_ACCESS_SHADER_READ_BIT,
+			.dstAccessMask	 = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+		};
+		dependencies[1] = {
+			.srcSubpass		 = 0,
+			.dstSubpass		 = VK_SUBPASS_EXTERNAL,
+			.srcStageMask	 = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.dstStageMask	 = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+			.srcAccessMask	 = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dstAccessMask	 = VK_ACCESS_SHADER_READ_BIT,
+			.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+		};
+
+		// Renderpass creation
+		VkRenderPassCreateInfo renderpass_ci = vki::renderPassCreateInfo();
+		renderpass_ci.attachmentCount		 = attachment_descriptions.size();
+		renderpass_ci.pAttachments			 = attachment_descriptions.data();
+		renderpass_ci.subpassCount			 = 1;
+		renderpass_ci.pSubpasses			 = &subpass_description;
+		renderpass_ci.dependencyCount		 = dependencies.size();
+		renderpass_ci.pDependencies			 = dependencies.data();
+
+		VkResult renderpass_create = vkCreateRenderPass(device.logical_device, &renderpass_ci, nullptr, &offscreen_pass.renderpass);
+		if(renderpass_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen's renderpass");
+		}
+
+		VkImageView attachments[2];
+		attachments[0] = offscreen_pass.colour_attachment.image_view;
+		attachments[1] = offscreen_pass.depth_attachment.image_view;
+
+		VkFramebufferCreateInfo fbo_ci = vki::framebufferCreateInfo(offscreen_pass.renderpass, 2, attachments, swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
+		VkResult fbo_create			   = vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &offscreen_pass.framebuffer);
+		if(fbo_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create offscreen framebuffer");
+		}
+	}
+
+
 	void setup_graphics_pipeline()
 	{
 		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultserver.spv");
@@ -570,7 +704,7 @@ struct HostRenderer
 		pipeline_ci.pColorBlendState			 = &colour_blending;
 		pipeline_ci.pDepthStencilState			 = &depth_stencil;
 		pipeline_ci.layout						 = pipeline_layout;
-		pipeline_ci.renderPass					 = renderpass.renderpass;
+		pipeline_ci.renderPass					 = offscreen_pass.renderpass;
 		pipeline_ci.subpass						 = 0;
 		pipeline_ci.basePipelineHandle			 = VK_NULL_HANDLE;
 
@@ -587,16 +721,16 @@ struct HostRenderer
 	{
 		swapchain.framebuffers.resize(swapchain.image_views.size());
 
-		for(size_t i = 0; i < swapchain.image_views.size(); i++)
+		/*for(size_t i = 0; i < swapchain.image_views.size(); i++)
 		{
-			std::vector<VkImageView> attachments = {swapchain.image_views[i], depth_attachment.image_view};
+			std::vector<VkImageView> attachments = {swapchain.image_views[i], offscreen_pass.depth_attachment.image_view};
 			VkFramebufferCreateInfo fbo_ci		 = vki::framebufferCreateInfo(renderpass.renderpass, attachments.size(), attachments.data(), swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
 
 			if(vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &swapchain.framebuffers[i]) != VK_SUCCESS)
 			{
 				throw std::runtime_error("failed to create framebuffer!");
 			}
-		}
+		}*/
 	}
 
 
@@ -634,7 +768,7 @@ struct HostRenderer
 			VkClearValue clear_values[2];
 			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
 			clear_values[1].depthStencil		= {1.0f, 0};
-			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass, swapchain.framebuffers[i], {0, 0}, swapchain.swapchain_extent, 2, clear_values);
+			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(offscreen_pass.renderpass, offscreen_pass.framebuffer, {0, 0}, swapchain.swapchain_extent, 2, clear_values);
 
 			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
@@ -746,11 +880,22 @@ struct HostRenderer
 
 		// Write to PPM
 		std::string filename = "tmpserver" + std::to_string(numframes) + ".ppm";
-		/*std::ofstream file(filename, std::ios::out | std::ios::binary);
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
 			 << SERVERWIDTH << "\n"
 			 << SERVERHEIGHT << "\n"
-			 << 255 << "\n";*/
+			 << 255 << "\n";
+
+		for(uint32_t y = 0; y < SERVERHEIGHT; y++)
+		{
+			uint32_t* row = (uint32_t*) image_packet.data;
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				file.write((char*) row, 3);
+				row++;
+			}
+			image_packet.data += image_packet.subresource_layout.rowPitch;
+		}
 
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r1; // 0-128 h, all width
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r2; // 128-256 h, all width
@@ -833,7 +978,7 @@ struct HostRenderer
 
 		// Use the most recently rendered swapchain image as the source
 		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
-		VkImage src_image			   = swapchain.images[current_frame];
+		VkImage src_image			   = offscreen_pass.colour_attachment.image;
 
 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
 		ImagePacket dst;
@@ -856,7 +1001,7 @@ struct HostRenderer
 								src_image,
 								VK_ACCESS_MEMORY_READ_BIT,
 								VK_ACCESS_TRANSFER_READ_BIT,
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+								VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 								VK_PIPELINE_STAGE_TRANSFER_BIT,
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
@@ -898,7 +1043,7 @@ struct HostRenderer
 								VK_ACCESS_TRANSFER_READ_BIT,
 								VK_ACCESS_MEMORY_READ_BIT,
 								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+								VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
 								VK_PIPELINE_STAGE_TRANSFER_BIT,
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
 

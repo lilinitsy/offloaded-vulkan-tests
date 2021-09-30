@@ -1247,7 +1247,7 @@ struct DeviceRenderer
 
 		// Receive & map memory
 		VkDeviceSize memmap_offset = 0;
-		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes * 4, 0, (void **) &dr->server_image_data);
+		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, memmap_offset, num_bytes, 0, (void **) &dr->server_image_data);
 
 		// Map in batches of 128 rows
 		for(uint16_t i = 0; i < 4; i++)
@@ -1258,7 +1258,7 @@ struct DeviceRenderer
 
 			if(server_read != -1)
 			{
-				memcpy(dr->server_image_data, servbuf, (size_t) num_bytes);
+				memcpy(dr->server_image_data + memmap_offset, servbuf, (size_t) num_bytes);
 				memmap_offset += num_bytes;
 
 				// write to ppm
@@ -1281,6 +1281,7 @@ struct DeviceRenderer
 		}
 
 		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
+
 		COZ_END("network_receive");
 
 		COZ_BEGIN("copy_network_image");
