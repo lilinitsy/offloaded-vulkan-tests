@@ -25,6 +25,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <coz.h>
+
 #include "camera.h"
 #include "defines.h"
 #include "utils.h"
@@ -752,6 +754,7 @@ struct HostRenderer
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
 
+		COZ_BEGIN("coalesce_image_data_call");
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r1; // 0-128 h, all width
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r2; // 128-256 h, all width
 		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r3; // 256-384 h, all width
@@ -771,6 +774,9 @@ struct HostRenderer
 			coalesce_image_data_to_buffer(384, 512, imgdata_r4, r4p, image_packet.subresource_layout.rowPitch);
 		}
 
+		COZ_END("coalesce_image_data_call");
+
+		COZ_BEGIN("network_send");
 		// Send buffer over tcp socket
 		size_t framesize_bytes = imgdata_r1.size() * sizeof(uint32_t);
 		send(server.client_fd, imgdata_r1.data(), framesize_bytes, 0);
@@ -785,6 +791,7 @@ struct HostRenderer
 
 		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
 		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+		COZ_END("network_send");
 
 		printf("framenum server: %lu\n", numframes);
 		numframes++;
@@ -804,6 +811,7 @@ struct HostRenderer
 
 	void coalesce_image_data_to_buffer(uint16_t firstrow, uint16_t endrow, std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> &imgdata, char *data, VkDeviceSize row_pitch)
 	{
+		COZ_BEGIN("coalesce_image_data_function");
 		// move data pointer to the right row
 		data += firstrow * row_pitch;
 
@@ -821,6 +829,8 @@ struct HostRenderer
 
 			data += row_pitch;
 		}
+
+		COZ_END("coalesce_image_data_function");
 	}
 
 
@@ -831,6 +841,7 @@ struct HostRenderer
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
+		COZ_BEGIN("swapchain_image_copy");
 		// Use the most recently rendered swapchain image as the source
 		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
 		VkImage src_image			   = swapchain.images[current_frame];
@@ -909,7 +920,7 @@ struct HostRenderer
 
 		dst.map_memory(device);
 
-
+		COZ_END("swapchain_image_copy");
 
 		gettimeofday(&timer_end, nullptr);
 
