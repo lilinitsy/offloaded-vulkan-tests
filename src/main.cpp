@@ -754,61 +754,10 @@ struct HostRenderer
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
 
-		COZ_BEGIN("coalesce_image_data_call");
-		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r1; // 0-128 h, all width
-		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r2; // 128-256 h, all width
-		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r3; // 256-384 h, all width
-		std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> imgdata_r4; // 384-512 h, all width
-
-		// Coalesce image_packet.data into a buffer we can send
-
 		COZ_BEGIN("network_send");
 
-		char line_written_code[1];
-		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
-		send(server.client_fd, image_packet.data + 0 * framesize_bytes, framesize_bytes, 0);
-		int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+		send_image_to_client_by_rows(image_packet, 4);
 
-		send(server.client_fd, image_packet.data + 1 * framesize_bytes, framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-		send(server.client_fd, image_packet.data + 2 * framesize_bytes, framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-		send(server.client_fd, image_packet.data + 3 * framesize_bytes, framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-
-/*
-#pragma omp parallel
-		{
-			char *r1p = image_packet.data;
-			char *r2p = image_packet.data;
-			char *r3p = image_packet.data;
-			char *r4p = image_packet.data;
-			coalesce_image_data_to_buffer(0, 128, imgdata_r1, r1p, image_packet.subresource_layout.rowPitch);
-			coalesce_image_data_to_buffer(128, 256, imgdata_r2, r2p, image_packet.subresource_layout.rowPitch);
-			coalesce_image_data_to_buffer(256, 384, imgdata_r3, r3p, image_packet.subresource_layout.rowPitch);
-			coalesce_image_data_to_buffer(384, 512, imgdata_r4, r4p, image_packet.subresource_layout.rowPitch);
-		}
-
-		COZ_END("coalesce_image_data_call");
-
-		COZ_BEGIN("network_send");
-		// Send buffer over tcp socket
-		size_t framesize_bytes = imgdata_r1.size() * sizeof(uint32_t);
-		send(server.client_fd, imgdata_r1.data(), framesize_bytes, 0);
-		char line_written_code[1];
-		int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-		send(server.client_fd, imgdata_r2.data(), framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-		send(server.client_fd, imgdata_r3.data(), framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-
-		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);*/
 		COZ_END("network_send");
 
 		printf("framenum server: %lu\n", numframes);
@@ -827,28 +776,17 @@ struct HostRenderer
 		//printf("frame dt: %f\n", (dt / 1000000.0f));
 	}
 
-	void coalesce_image_data_to_buffer(uint16_t firstrow, uint16_t endrow, std::array<uint32_t, SERVERWIDTH * SERVERHEIGHT / 4> &imgdata, char *data, VkDeviceSize row_pitch)
+	// Send an image to the client splitting up based on however many packets we want to send / however many # of rows per image.
+	void send_image_to_client_by_rows(ImagePacket image_packet, uint16_t numpackets)
 	{
-		COZ_BEGIN("coalesce_image_data_function");
-		// move data pointer to the right row
-		data += firstrow * row_pitch;
+		char line_written_code[1];
+		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
 
-		uint32_t counter = 0;
-		for(uint32_t i = firstrow; i < endrow; i++)
+		for(uint16_t i = 0; i < numpackets; i++)
 		{
-			uint32_t *segment = (uint32_t *) data;
-
-			for(uint32_t j = 0; j < SERVERWIDTH; j++)
-			{
-				imgdata[counter] = *segment;
-				segment++;
-				counter++;
-			}
-
-			data += row_pitch;
+			send(server.client_fd, image_packet.data + i * framesize_bytes, framesize_bytes, 0);
+			int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 		}
-
-		COZ_END("coalesce_image_data_function");
 	}
 
 
