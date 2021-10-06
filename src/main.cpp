@@ -762,6 +762,24 @@ struct HostRenderer
 
 		// Coalesce image_packet.data into a buffer we can send
 
+		COZ_BEGIN("network_send");
+
+		char line_written_code[1];
+		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
+		send(server.client_fd, image_packet.data + 0 * framesize_bytes, framesize_bytes, 0);
+		int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, image_packet.data + 1 * framesize_bytes, framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, image_packet.data + 2 * framesize_bytes, framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+		send(server.client_fd, image_packet.data + 3 * framesize_bytes, framesize_bytes, 0);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+
+
+/*
 #pragma omp parallel
 		{
 			char *r1p = image_packet.data;
@@ -790,7 +808,7 @@ struct HostRenderer
 		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 
 		send(server.client_fd, imgdata_r4.data(), framesize_bytes, 0);
-		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+		client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);*/
 		COZ_END("network_send");
 
 		printf("framenum server: %lu\n", numframes);
