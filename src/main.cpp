@@ -786,7 +786,7 @@ struct HostRenderer
 		for(uint16_t i = 0; i < numpackets; i++)
 		{
 			send(server.client_fd, image_packet.data + i * framesize_bytes, framesize_bytes, 0);
-			int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 		}
 	}
 
