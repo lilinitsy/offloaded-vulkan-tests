@@ -1275,8 +1275,8 @@ struct DeviceRenderer
 				}*/
 
 				// Transmit to server that code was written
-				char end_line_code[1] = {'d'};
-				write(dr->client.socket_fd, end_line_code, 1);
+				//char end_line_code[1] = {'d'};
+				//write(dr->client.socket_fd, end_line_code, 1);
 			}
 		}
 
