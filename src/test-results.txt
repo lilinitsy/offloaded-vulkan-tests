@@ -1,0 +1,2 @@
+8th of October:
+Averaged 16.2fps over 200 frames at 220Mbp/s

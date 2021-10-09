@@ -777,6 +777,7 @@ struct HostRenderer
 	}
 
 	// Send an image to the client splitting up based on however many packets we want to send / however many # of rows per image.
+	// However, passing in different numbers of rows will have to be explicitly defined on the client or in a define
 	void send_image_to_client_by_rows(ImagePacket image_packet, uint16_t numpackets)
 	{
 		char line_written_code[1];
