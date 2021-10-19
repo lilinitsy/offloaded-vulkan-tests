@@ -28,7 +28,7 @@ In the context of a game with stochastic behaviour, this means that the stochast
 - Mouse and keyboard I/O from the client to server will probably need some sort of blocking to upload camera position and UBO's.
 This is annoying and slow if single-threaded, and not exactly trivial to multithread.
 
-## Vulkan Walkthrouh
+## Vulkan Walkthrough
 Here, I'll detail the important parts of the vulkan setup.
 
 The server goes through a normal rendering loop, with only one minimum renderpass and one minimum set of shaders. 
