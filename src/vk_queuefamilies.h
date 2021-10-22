@@ -9,6 +9,7 @@ struct QueueFamilyIndices
 {
 	uint32_t graphics_qf;
 	uint32_t present_qf;
+	uint32_t compute_qf;
 
 	bool qf_completed()
 	{
@@ -32,6 +33,11 @@ QueueFamilyIndices search_queue_families(VkPhysicalDevice device, VkSurfaceKHR s
 		if(queue_families[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)
 		{
 			indices.graphics_qf = queue_index;
+		}
+
+		if(queue_families[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+		{
+			indices.compute_qf = queue_index;
 		}
 
 		VkBool32 present_support = false;
