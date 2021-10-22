@@ -130,7 +130,7 @@ struct Client
 		sockaddr_in server_address = {
 			.sin_family = AF_INET,
 			.sin_port	= htons(static_cast<in_port_t>(port)),
-			.sin_addr	= inet_addr("192.168.0.2"),
+			//.sin_addr	= inet_addr("192.168.0.2"),
 		};
 
 		//inet_pton(AF_INET, "silo.remexre.xyz", &(server_address.sin_addr));
