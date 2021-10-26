@@ -177,12 +177,9 @@ struct DeviceRenderer
 	} pipelines;
 
 	Model model;
-	VkBuffer vbo;
-	VkBuffer ibo;
-	std::vector<VkBuffer> ubos;
-	std::vector<VkDeviceMemory> ubos_mem;
-	VkDeviceMemory vbo_mem;
-	VkDeviceMemory ibo_mem;
+	VulkanBuffer vbo;
+	VulkanBuffer ibo;
+	std::vector<VulkanBuffer> ubos;
 
 	VulkanAttachment server_colour_attachment;
 	VkSampler server_frame_sampler;
@@ -270,8 +267,8 @@ struct DeviceRenderer
 		setup_serverframe_sampler();
 		setup_texture_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
-		initialize_vertex_buffers(device, model.vertices, &vbo, &vbo_mem, command_pool);
-		initialize_index_buffers(device, model.indices, &ibo, &ibo_mem, command_pool);
+		initialize_vertex_buffers(device, model.vertices, &vbo, command_pool);
+		initialize_index_buffers(device, model.indices, &ibo, command_pool);
 		initialize_ubos();
 		setup_descriptor_pool();
 		setup_descriptor_sets();
@@ -328,10 +325,8 @@ struct DeviceRenderer
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.model, nullptr);
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.fsquad, nullptr);
 
-		vkDestroyBuffer(device.logical_device, vbo, nullptr);
-		vkDestroyBuffer(device.logical_device, ibo, nullptr);
-		vkFreeMemory(device.logical_device, vbo_mem, nullptr);
-		vkFreeMemory(device.logical_device, ibo_mem, nullptr);
+		vbo.destroy(device);
+		ibo.destroy(device);
 
 		for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
@@ -373,8 +368,7 @@ struct DeviceRenderer
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			vkDestroyBuffer(device.logical_device, ubos[i], nullptr);
-			vkFreeMemory(device.logical_device, ubos_mem[i], nullptr);
+			ubos[i].destroy(device);
 		}
 
 		vkDestroyDescriptorPool(device.logical_device, descriptor_pool, nullptr);
@@ -637,7 +631,7 @@ struct DeviceRenderer
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info	= vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
+			VkDescriptorBufferInfo buffer_info	= vki::descriptorBufferInfo(ubos[i].buffer, 0, sizeof(UBO));
 			VkDescriptorImageInfo teximage_info = vki::descriptorImageInfo(tex_sampler, texcolour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
@@ -664,7 +658,7 @@ struct DeviceRenderer
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info			   = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
+			VkDescriptorBufferInfo buffer_info			   = vki::descriptorBufferInfo(ubos[i].buffer, 0, sizeof(UBO));
 			VkDescriptorImageInfo serverimage_info		   = vki::descriptorImageInfo(server_frame_sampler, server_colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 			VkDescriptorImageInfo local_renderedimage_info = vki::descriptorImageInfo(offscreen_pass.sampler, offscreen_pass.colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
@@ -826,11 +820,10 @@ struct DeviceRenderer
 	{
 		VkDeviceSize buffersize = sizeof(UBO);
 		ubos.resize(swapchain.images.size());
-		ubos_mem.resize(swapchain.images.size());
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			create_buffer(device, buffersize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubos[i], ubos_mem[i]);
+			create_buffer(device, buffersize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubos[i]);
 		}
 	}
 
@@ -852,9 +845,9 @@ struct DeviceRenderer
 		ubo.projection[1][1] *= -1; // flip y coordinate from opengl
 
 		void *data;
-		vkMapMemory(device.logical_device, ubos_mem[current_image_index], 0, sizeof(ubo), 0, &data);
+		vkMapMemory(device.logical_device, ubos[current_image_index].memory, 0, sizeof(ubo), 0, &data);
 		memcpy(data, &ubo, sizeof(ubo));
-		vkUnmapMemory(device.logical_device, ubos_mem[current_image_index]);
+		vkUnmapMemory(device.logical_device, ubos[current_image_index].memory);
 	}
 
 
@@ -1074,7 +1067,7 @@ struct DeviceRenderer
 			}
 
 
-			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo, ibo, pipeline_layouts, model};
+			FirstRenderPassArgs renderpassargs = {offscreen_pass, swapchain, pipelines, command_buffers[i], descriptor_sets.model[i], vbo.buffer, ibo.buffer, pipeline_layouts, model};
 			int first_renderpass_thread		   = pthread_create(&vk_pthread_t.first_renderpass_thread, nullptr, DeviceRenderer::execute_first_renderpass, (void *) &renderpassargs);
 
 			// The pthread_join isn't actually waiting here

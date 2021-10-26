@@ -20,6 +20,7 @@ struct VulkanDevice
 	VkDevice logical_device;
 	VkQueue graphics_queue;
 	VkQueue present_queue;
+	VkQueue compute_queue;
 
 	VulkanDevice()
 	{
@@ -86,6 +87,7 @@ struct VulkanDevice
 
 		vkGetDeviceQueue(logical_device, indices.graphics_qf, 0, &graphics_queue);
 		vkGetDeviceQueue(logical_device, indices.present_qf, 0, &present_queue);
+		vkGetDeviceQueue(logical_device, indices.compute_qf, 0, &compute_queue);
 	}
 
 
