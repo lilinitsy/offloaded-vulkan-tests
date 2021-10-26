@@ -433,14 +433,13 @@ struct HostRenderer
 			throw std::runtime_error("Could not load texture image");
 		}
 
-		VkBuffer staging_buffer;
-		VkDeviceMemory staging_buffer_memory;
+		VulkanBuffer staging_buffer;
 
-		create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
+		create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer);
 		void *data;
-		vkMapMemory(device.logical_device, staging_buffer_memory, 0, texture_size, 0, &data);
+		vkMapMemory(device.logical_device, staging_buffer.memory, 0, texture_size, 0, &data);
 		memcpy(data, pixels, texture_size);
-		vkUnmapMemory(device.logical_device, staging_buffer_memory);
+		vkUnmapMemory(device.logical_device, staging_buffer.memory);
 
 		stbi_image_free(pixels);
 
@@ -478,8 +477,7 @@ struct HostRenderer
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
-		vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-		vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
+		staging_buffer.destroy(device);
 	}
 
 	void setup_texture_image()

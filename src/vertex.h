@@ -106,47 +106,5 @@ void initialize_index_buffers(VulkanDevice device, std::vector<uint32_t> indices
 	staging_buffer.destroy(device);
 }
 
-void initialize_vertex_buffers(VulkanDevice device, std::vector<Vertex> vertices, VkBuffer *vbo, VkDeviceMemory *vbo_mem, VkCommandPool command_pool)
-{
-	// Staging buffer to use the host visible as temp buffer, and then a device local one on the gpu
-	VkDeviceSize buffersize = sizeof(vertices[0]) * vertices.size();
-	VkBuffer staging_buffer;
-	VkDeviceMemory staging_buffer_memory;
-	create_buffer(device, buffersize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-
-	// Map buffer memory
-	void *data;
-	vkMapMemory(device.logical_device, staging_buffer_memory, 0, buffersize, 0, &data);
-	memcpy(data, vertices.data(), buffersize);
-	vkUnmapMemory(device.logical_device, staging_buffer_memory);
-
-	// copy device
-	create_buffer(device, buffersize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, *vbo, *vbo_mem);
-	copy_buffer(device, staging_buffer, *vbo, command_pool, buffersize);
-	vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-	vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
-}
-
-void initialize_index_buffers(VulkanDevice device, std::vector<uint32_t> indices, VkBuffer *ibo, VkDeviceMemory *ibo_mem, VkCommandPool command_pool)
-{
-	VkDeviceSize buffersize = sizeof(indices[0]) * indices.size();
-	VkBuffer staging_buffer;
-	VkDeviceMemory staging_buffer_memory;
-	create_buffer(device, buffersize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer, staging_buffer_memory);
-
-	// Map buffer memory
-	void *data;
-	vkMapMemory(device.logical_device, staging_buffer_memory, 0, buffersize, 0, &data);
-	memcpy(data, indices.data(), buffersize);
-	vkUnmapMemory(device.logical_device, staging_buffer_memory);
-
-	// copy device
-	create_buffer(device, buffersize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, *ibo, *ibo_mem);
-	copy_buffer(device, staging_buffer, *ibo, command_pool, buffersize);
-	vkDestroyBuffer(device.logical_device, staging_buffer, nullptr);
-	vkFreeMemory(device.logical_device, staging_buffer_memory, nullptr);
-}
-
-
 
 #endif
