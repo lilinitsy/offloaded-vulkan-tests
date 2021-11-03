@@ -127,27 +127,13 @@ struct HostRenderer
 	VkSurfaceKHR surface;
 	VulkanDevice device;
 	VulkanSwapchain swapchain;
-	VulkanRenderpass renderpass;
 
-	VkPipelineLayout pipeline_layout;
-	VkPipeline graphics_pipeline;
+	VkDescriptorPool descriptor_pool;
 
 	Model model;
-
+	VkSampler tex_sampler;
 	VulkanBuffer vbo;
 	VulkanBuffer ibo;
-	std::vector<VulkanBuffer> ubos;
-
-	VulkanAttachment colour_attachment;
-	VkSampler tex_sampler;
-	VulkanAttachment depth_attachment;
-
-	VkCommandPool command_pool;
-	std::vector<VkCommandBuffer> command_buffers;
-
-	VkDescriptorSetLayout descriptor_set_layout;
-	VkDescriptorPool descriptor_pool;
-	std::vector<VkDescriptorSet> descriptor_sets;
 
 	std::vector<VkSemaphore> image_available_semaphores;
 	std::vector<VkSemaphore> render_finished_semaphores;
@@ -158,6 +144,25 @@ struct HostRenderer
 
 	Server server;
 
+	struct Graphics
+	{
+		VkCommandPool command_pool;
+		std::vector<VkCommandBuffer> command_buffers;
+
+		VkDescriptorSetLayout descriptor_set_layout;
+		std::vector<VkDescriptorSet> descriptor_sets;
+
+		VkPipelineLayout pipeline_layout;
+		VkPipeline pipeline;
+
+		VulkanRenderpass renderpass;
+
+		std::vector<VulkanBuffer> ubos;
+
+		VulkanAttachment colour_attachment;
+		VulkanAttachment depth_attachment;
+	} graphics;
+
 
 	// Compute structure to organize the compute pipeline and stuff
 	struct Compute
@@ -166,14 +171,17 @@ struct HostRenderer
 		VkCommandBuffer command_buffer;
 
 		VkDescriptorSetLayout descriptor_set_layout;
-		VkDescriptorSet descriptor_set;
+		std::vector<VkDescriptorSet> descriptor_sets;
 
-		VkPipeline pipeline_layout;
+		VkPipelineLayout pipeline_layout;
 		VkPipeline pipeline;
 
 		VkQueue queue;
 		VkSemaphore semaphore;
 	} compute;
+
+	VulkanAttachment rendered_frame_attachment;
+	VkSampler rendered_frame_sampler;
 
 
 	void initWindow()
@@ -194,7 +202,7 @@ struct HostRenderer
 		device									  = VulkanDevice(instance, surface);
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
-		renderpass								  = VulkanRenderpass(device, swapchain);
+		graphics.renderpass								  = VulkanRenderpass(device, swapchain);
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
@@ -204,15 +212,16 @@ struct HostRenderer
 		setup_texture_image();
 		setup_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
-		initialize_vertex_buffers(device, model.vertices, &vbo, command_pool);
-		initialize_index_buffers(device, model.indices, &ibo, command_pool);
+		initialize_vertex_buffers(device, model.vertices, &vbo, graphics.command_pool);
+		initialize_index_buffers(device, model.indices, &ibo, graphics.command_pool);
 		initialize_ubos();
 		setup_descriptor_pool();
 		setup_descriptor_sets();
 		setup_command_buffers();
 		setup_vk_async();
+		//setup_rendered_frame_sampler();
 
-		setup_compute();
+		//setup_compute();
 
 		server = Server();
 		server.connect_to_client(PORT);
@@ -234,9 +243,9 @@ struct HostRenderer
 		cleanup_swapchain();
 
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
-		destroy_vulkan_attachment(device.logical_device, colour_attachment);
-		destroy_vulkan_attachment(device.logical_device, depth_attachment);
-		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
+		destroy_vulkan_attachment(device.logical_device, graphics.colour_attachment);
+		destroy_vulkan_attachment(device.logical_device, graphics.depth_attachment);
+		vkDestroyDescriptorSetLayout(device.logical_device, graphics.descriptor_set_layout, nullptr);
 
 		vbo.destroy(device);
 		ibo.destroy(device);
@@ -248,7 +257,7 @@ struct HostRenderer
 			vkDestroyFence(device.logical_device, in_flight_fences[i], nullptr);
 		}
 
-		vkDestroyCommandPool(device.logical_device, command_pool, nullptr);
+		vkDestroyCommandPool(device.logical_device, graphics.command_pool, nullptr);
 
 		device.destroy();
 
@@ -275,15 +284,15 @@ struct HostRenderer
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			ubos[i].destroy(device);
+			graphics.ubos[i].destroy(device);
 		}
 
 		vkDestroyDescriptorPool(device.logical_device, descriptor_pool, nullptr);
 
-		vkFreeCommandBuffers(device.logical_device, command_pool, command_buffers.size(), command_buffers.data());
-		vkDestroyPipeline(device.logical_device, graphics_pipeline, nullptr);
-		vkDestroyPipelineLayout(device.logical_device, pipeline_layout, nullptr);
-		vkDestroyRenderPass(device.logical_device, renderpass.renderpass, nullptr);
+		vkFreeCommandBuffers(device.logical_device, graphics.command_pool, graphics.command_buffers.size(), graphics.command_buffers.data());
+		vkDestroyPipeline(device.logical_device, graphics.pipeline, nullptr);
+		vkDestroyPipelineLayout(device.logical_device, graphics.pipeline_layout, nullptr);
+		vkDestroyRenderPass(device.logical_device, graphics.renderpass.renderpass, nullptr);
 
 		for(uint32_t i = 0; i < swapchain.image_views.size(); i++)
 		{
@@ -353,7 +362,7 @@ struct HostRenderer
 		descriptor_set_layout_bindings.push_back(sampler_layout_binding);
 
 		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
-		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layout);
+		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &graphics.descriptor_set_layout);
 		if(descriptor_set_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create descriptor set layout");
@@ -362,12 +371,14 @@ struct HostRenderer
 
 	void setup_descriptor_pool()
 	{
-		VkDescriptorPoolSize poolsize_ubo	  = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, swapchain.images.size());
-		VkDescriptorPoolSize poolsize_sampler = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, swapchain.images.size());
+		VkDescriptorPoolSize poolsize_ubo			= vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, swapchain.images.size());
+		VkDescriptorPoolSize poolsize_sampler		= vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * swapchain.images.size()); // 2 * so that each image_view can have a sampler
+		VkDescriptorPoolSize poolsize_storagebuffer = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, swapchain.images.size());
 
 		std::vector<VkDescriptorPoolSize> poolsizes;
 		poolsizes.push_back(poolsize_ubo);
 		poolsizes.push_back(poolsize_sampler);
+		poolsizes.push_back(poolsize_storagebuffer);
 
 		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
 		VkResult descriptor_pool_create	   = vkCreateDescriptorPool(device.logical_device, &pool_ci, nullptr, &descriptor_pool);
@@ -379,12 +390,12 @@ struct HostRenderer
 
 	void setup_descriptor_sets()
 	{
-		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), descriptor_set_layout);
-		descriptor_sets.resize(swapchain.images.size());
+		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), graphics.descriptor_set_layout);
+		graphics.descriptor_sets.resize(swapchain.images.size());
 
 		// Allocate descriptor sets
 		VkDescriptorSetAllocateInfo set_ai	 = vki::descriptorSetAllocateInfo(descriptor_pool, swapchain.images.size(), layouts.data());
-		VkResult descriptor_set_alloc_result = vkAllocateDescriptorSets(device.logical_device, &set_ai, descriptor_sets.data());
+		VkResult descriptor_set_alloc_result = vkAllocateDescriptorSets(device.logical_device, &set_ai, graphics.descriptor_sets.data());
 		if(descriptor_set_alloc_result != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not allocate descriptor set");
@@ -393,13 +404,13 @@ struct HostRenderer
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i].buffer, 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(graphics.ubos[i].buffer, 0, sizeof(UBO));
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, graphics.colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
-				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
-				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &image_info),
+				vki::writeDescriptorSet(graphics.descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
+				vki::writeDescriptorSet(graphics.descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &image_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -413,8 +424,8 @@ struct HostRenderer
 		VkFormat depth_format		  = device.find_format(formats, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
 
-		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_attachment.image, depth_attachment.memory);
-		depth_attachment.image_view = create_image_view(device.logical_device, depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, graphics.depth_attachment.image, graphics.depth_attachment.memory);
+		graphics.depth_attachment.image_view = create_image_view(device.logical_device, graphics.depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
 	}
 
 
@@ -462,17 +473,17 @@ struct HostRenderer
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-					 colour_attachment.image,
-					 colour_attachment.memory);
-		transition_image_layout(device, command_pool, colour_attachment.image,
+					 graphics.colour_attachment.image,
+					 graphics.colour_attachment.memory);
+		transition_image_layout(device, graphics.command_pool, graphics.colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		copy_buffer_to_image(device, command_pool, staging_buffer,
-							 colour_attachment.image,
+		copy_buffer_to_image(device, graphics.command_pool, staging_buffer,
+							 graphics.colour_attachment.image,
 							 texture_width,
 							 texture_height);
-		transition_image_layout(device, command_pool, colour_attachment.image,
+		transition_image_layout(device, graphics.command_pool, graphics.colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -482,7 +493,7 @@ struct HostRenderer
 
 	void setup_texture_image()
 	{
-		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		graphics.colour_attachment.image_view = create_image_view(device.logical_device, graphics.colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
 	}
 
 	void setup_sampler()
@@ -501,15 +512,70 @@ struct HostRenderer
 		}
 	}
 
+	void setup_rendered_frame_sampler()
+	{
+		VkExtent3D texextent3D = {
+			.width	= (uint32_t) SERVERWIDTH,
+			.height = (uint32_t) SERVERHEIGHT,
+			.depth	= 1,
+		};
+
+		// Create image that will be bound to sampler
+		create_image(device, 0,
+					 VK_IMAGE_TYPE_2D,
+					 VK_FORMAT_R8G8B8A8_SRGB,
+					 texextent3D,
+					 1, 1,
+					 VK_SAMPLE_COUNT_1_BIT,
+					 VK_IMAGE_TILING_OPTIMAL,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_SHARING_MODE_EXCLUSIVE,
+					 VK_IMAGE_LAYOUT_UNDEFINED,
+					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					 rendered_frame_attachment.image,
+					 rendered_frame_attachment.memory);
+
+		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
+		transition_image_layout(device, graphics.command_pool,
+								rendered_frame_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+		// Now transition to shader read only optimal
+		transition_image_layout(device, graphics.command_pool,
+								rendered_frame_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+		// Create image view for the colour attachment
+		rendered_frame_attachment.image_view = create_image_view(device.logical_device, rendered_frame_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+
+		// Create the sampler
+		VkPhysicalDeviceProperties properties;
+		vkGetPhysicalDeviceProperties(device.physical_device, &properties);
+		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
+																VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT,
+																0.0f, VK_TRUE, properties.limits.maxSamplerAnisotropy, VK_FALSE, VK_COMPARE_OP_ALWAYS,
+																0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
+
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &rendered_frame_sampler);
+		if(sampler_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create texture sampler");
+		}
+	}
+
 
 	void initialize_ubos()
 	{
 		VkDeviceSize buffersize = sizeof(UBO);
-		ubos.resize(swapchain.images.size());
+		graphics.ubos.resize(swapchain.images.size());
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			create_buffer(device, buffersize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubos[i]);
+			create_buffer(device, buffersize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, graphics.ubos[i]);
 		}
 	}
 
@@ -529,9 +595,9 @@ struct HostRenderer
 		ubo.projection[1][1] *= -1; // flip y coordinate from opengl
 
 		void *data;
-		vkMapMemory(device.logical_device, ubos[current_image_index].memory, 0, sizeof(ubo), 0, &data);
+		vkMapMemory(device.logical_device, graphics.ubos[current_image_index].memory, 0, sizeof(ubo), 0, &data);
 		memcpy(data, &ubo, sizeof(ubo));
-		vkUnmapMemory(device.logical_device, ubos[current_image_index].memory);
+		vkUnmapMemory(device.logical_device, graphics.ubos[current_image_index].memory);
 	}
 
 
@@ -566,9 +632,9 @@ struct HostRenderer
 		VkPipelineDepthStencilStateCreateInfo depth_stencil			= vki::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE, {}, {}, 0.0f, 1.0f);
 
 
-		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layout, 0, nullptr);
+		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &graphics.descriptor_set_layout, 0, nullptr);
 
-		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layout) != VK_SUCCESS)
+		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &graphics.pipeline_layout) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create pipeline layout!");
 		}
@@ -583,12 +649,12 @@ struct HostRenderer
 		pipeline_ci.pMultisampleState			 = &multisampling;
 		pipeline_ci.pColorBlendState			 = &colour_blending;
 		pipeline_ci.pDepthStencilState			 = &depth_stencil;
-		pipeline_ci.layout						 = pipeline_layout;
-		pipeline_ci.renderPass					 = renderpass.renderpass;
+		pipeline_ci.layout						 = graphics.pipeline_layout;
+		pipeline_ci.renderPass					 = graphics.renderpass.renderpass;
 		pipeline_ci.subpass						 = 0;
 		pipeline_ci.basePipelineHandle			 = VK_NULL_HANDLE;
 
-		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &graphics_pipeline) != VK_SUCCESS)
+		if(vkCreateGraphicsPipelines(device.logical_device, VK_NULL_HANDLE, 1, &pipeline_ci, nullptr, &graphics.pipeline) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create graphics pipeline!");
 		}
@@ -603,8 +669,8 @@ struct HostRenderer
 
 		for(size_t i = 0; i < swapchain.image_views.size(); i++)
 		{
-			std::vector<VkImageView> attachments = {swapchain.image_views[i], depth_attachment.image_view};
-			VkFramebufferCreateInfo fbo_ci		 = vki::framebufferCreateInfo(renderpass.renderpass, attachments.size(), attachments.data(), swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
+			std::vector<VkImageView> attachments = {swapchain.image_views[i], graphics.depth_attachment.image_view};
+			VkFramebufferCreateInfo fbo_ci		 = vki::framebufferCreateInfo(graphics.renderpass.renderpass, attachments.size(), attachments.data(), swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
 
 			if(vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &swapchain.framebuffers[i]) != VK_SUCCESS)
 			{
@@ -619,7 +685,7 @@ struct HostRenderer
 		QueueFamilyIndices qf_indices = search_queue_families(device.physical_device, surface);
 
 		VkCommandPoolCreateInfo pool_ci = vki::commandPoolCreateInfo(qf_indices.graphics_qf);
-		if(vkCreateCommandPool(device.logical_device, &pool_ci, nullptr, &command_pool) != VK_SUCCESS)
+		if(vkCreateCommandPool(device.logical_device, &pool_ci, nullptr, &graphics.command_pool) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create command pool!");
 		}
@@ -627,20 +693,20 @@ struct HostRenderer
 
 	void setup_command_buffers()
 	{
-		command_buffers.resize(swapchain.framebuffers.size());
+		graphics.command_buffers.resize(swapchain.framebuffers.size());
 
-		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, command_buffers.size());
+		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, graphics.command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphics.command_buffers.size());
 
-		if(vkAllocateCommandBuffers(device.logical_device, &cmdbuf_ai, command_buffers.data()) != VK_SUCCESS)
+		if(vkAllocateCommandBuffers(device.logical_device, &cmdbuf_ai, graphics.command_buffers.data()) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to allocate command buffers!");
 		}
 
-		for(size_t i = 0; i < command_buffers.size(); i++)
+		for(size_t i = 0; i < graphics.command_buffers.size(); i++)
 		{
 			VkCommandBufferBeginInfo cmdbuf_bi = vki::commandBufferBeginInfo();
 
-			if(vkBeginCommandBuffer(command_buffers[i], &cmdbuf_bi) != VK_SUCCESS)
+			if(vkBeginCommandBuffer(graphics.command_buffers[i], &cmdbuf_bi) != VK_SUCCESS)
 			{
 				throw std::runtime_error("failed to begin recording command buffer!");
 			}
@@ -648,25 +714,25 @@ struct HostRenderer
 			VkClearValue clear_values[2];
 			clear_values[0].color				= {0.0f, 0.0f, 0.0f, 1.0f};
 			clear_values[1].depthStencil		= {1.0f, 0};
-			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(renderpass.renderpass, swapchain.framebuffers[i], {0, 0}, swapchain.swapchain_extent, 2, clear_values);
+			VkRenderPassBeginInfo renderpass_bi = vki::renderPassBeginInfo(graphics.renderpass.renderpass, swapchain.framebuffers[i], {0, 0}, swapchain.swapchain_extent, 2, clear_values);
 
-			vkCmdBeginRenderPass(command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
+			vkCmdBeginRenderPass(graphics.command_buffers[i], &renderpass_bi, VK_SUBPASS_CONTENTS_INLINE);
 
-			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+			vkCmdBindPipeline(graphics.command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics.pipeline);
 
 			VkBuffer vertex_buffers[] = {vbo.buffer};
 			VkDeviceSize offsets[]	  = {0};
 
-			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(command_buffers[i], ibo.buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindVertexBuffers(graphics.command_buffers[i], 0, 1, vertex_buffers, offsets);
+			vkCmdBindIndexBuffer(graphics.command_buffers[i], ibo.buffer, 0, VK_INDEX_TYPE_UINT32);
 
-			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
+			vkCmdBindDescriptorSets(graphics.command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics.pipeline_layout, 0, 1, &graphics.descriptor_sets[i], 0, nullptr);
 
-			vkCmdDrawIndexed(command_buffers[i], model.indices.size(), 1, 0, 0, 0);
+			vkCmdDrawIndexed(graphics.command_buffers[i], model.indices.size(), 1, 0, 0, 0);
 
-			vkCmdEndRenderPass(command_buffers[i]);
+			vkCmdEndRenderPass(graphics.command_buffers[i]);
 
-			if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS)
+			if(vkEndCommandBuffer(graphics.command_buffers[i]) != VK_SUCCESS)
 			{
 				throw std::runtime_error("failed to record command buffer!");
 			}
@@ -698,7 +764,73 @@ struct HostRenderer
 
 	void setup_compute()
 	{
+		setup_compute_descriptor_set_layout();
+		setup_compute_pipeline();
+
+		//setup_compute_descriptor_sets();
 	}
+
+	void setup_compute_descriptor_set_layout()
+	{
+		// input image (rendered frame)
+		VkDescriptorSetLayoutBinding input_image = vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr);
+
+		// output storage buffer, uint32_t's to be sent to client
+		VkDescriptorSetLayoutBinding output_rgb = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_COMPUTE_BIT, nullptr);
+
+		// Put the descriptor set descriptions into a vector
+		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings;
+		descriptor_set_layout_bindings.push_back(input_image);
+		descriptor_set_layout_bindings.push_back(output_rgb);
+
+		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
+		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &compute.descriptor_set_layout);
+		if(descriptor_set_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create compute's descriptor set layout");
+		}
+	}
+
+	void setup_compute_pipeline()
+	{
+		VkPipelineLayoutCreateInfo pipeline_layout_ci = vki::pipelineLayoutCreateInfo(1, &compute.descriptor_set_layout, 0, nullptr);
+
+		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_ci, nullptr, &compute.pipeline_layout) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to create compute pipeline layout!");
+		}
+	}
+
+	/*void setup_compute_descriptor_sets()
+	{
+		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), compute.descriptor_set_layout);
+		compute.descriptor_sets.resize(swapchain.images.size());
+
+		// Allocate descriptor sets
+		VkDescriptorSetAllocateInfo set_ai	 = vki::descriptorSetAllocateInfo(descriptor_pool, swapchain.images.size(), layouts.data());
+		VkResult descriptor_set_alloc_result = vkAllocateDescriptorSets(device.logical_device, &set_ai, compute.descriptor_sets.data());
+
+		if(descriptor_set_alloc_result != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not allocate descriptor set");
+		}
+
+		// Populate the descriptor sets
+		for(uint32_t i = 0; i < swapchain.images.size(); i++)
+		{
+			VkDescriptorBufferInfo buffer_info	 = vki::descriptorImageInfo()
+				VkDescriptorImageInfo image_info = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+
+			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
+			write_descriptor_sets = {
+				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &buffer_info),
+				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &image_info),
+			};
+
+			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+		}
+	}*/
+
 
 
 	void render_complete_frame()
@@ -741,7 +873,7 @@ struct HostRenderer
 		submit_info.pWaitSemaphores		 = wait_semaphores;
 		submit_info.pWaitDstStageMask	 = wait_stages;
 		submit_info.commandBufferCount	 = 1;
-		submit_info.pCommandBuffers		 = &command_buffers[image_index];
+		submit_info.pCommandBuffers		 = &graphics.command_buffers[image_index];
 		submit_info.signalSemaphoreCount = 1;
 		submit_info.pSignalSemaphores	 = signal_semaphores;
 
@@ -817,7 +949,7 @@ struct HostRenderer
 
 		COZ_BEGIN("swapchain_image_copy");
 		// Use the most recently rendered swapchain image as the source
-		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
+		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, graphics.command_pool);
 		VkImage src_image			   = swapchain.images[current_frame];
 
 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
@@ -827,7 +959,7 @@ struct HostRenderer
 
 		// Blit from the swapchain image to the copied image
 		// Transition dst image to destination layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								dst.image,
 								0,
 								VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -837,7 +969,7 @@ struct HostRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		// Transition swapchain image from present to source's transfer layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								src_image,
 								VK_ACCESS_MEMORY_READ_BIT,
 								VK_ACCESS_TRANSFER_READ_BIT,
@@ -867,7 +999,7 @@ struct HostRenderer
 
 
 		// Transition dst image to general layout -- lets us map the image memory
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								dst.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,
 								VK_ACCESS_MEMORY_READ_BIT,
@@ -878,7 +1010,7 @@ struct HostRenderer
 
 
 		// transition to swapchain image now that copying is done
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								src_image,
 								VK_ACCESS_TRANSFER_READ_BIT,
 								VK_ACCESS_MEMORY_READ_BIT,
@@ -887,7 +1019,7 @@ struct HostRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT,
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-		end_command_buffer(device, command_pool, copy_cmdbuffer);
+		end_command_buffer(device, graphics.command_pool, copy_cmdbuffer);
 
 		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
 		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
@@ -912,7 +1044,7 @@ struct HostRenderer
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain.setup_swapchain(swapchain_support, surface, device, window);
 		swapchain.setup_image_views(device.logical_device);
-		renderpass.setup_renderpass(device, swapchain);
+		graphics.renderpass.setup_renderpass(device, swapchain);
 		setup_graphics_pipeline();
 		setup_framebuffers();
 		initialize_ubos();
