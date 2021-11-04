@@ -172,6 +172,7 @@ struct HostRenderer
 
 		VkDescriptorSetLayout descriptor_set_layout;
 		std::vector<VkDescriptorSet> descriptor_sets;
+		VkBuffer storage_buffer;
 
 		VkPipelineLayout pipeline_layout;
 		VkPipeline pipeline;
@@ -202,7 +203,7 @@ struct HostRenderer
 		device									  = VulkanDevice(instance, surface);
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
-		graphics.renderpass								  = VulkanRenderpass(device, swapchain);
+		graphics.renderpass						  = VulkanRenderpass(device, swapchain);
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
@@ -219,9 +220,9 @@ struct HostRenderer
 		setup_descriptor_sets();
 		setup_command_buffers();
 		setup_vk_async();
-		//setup_rendered_frame_sampler();
+		setup_rendered_frame_sampler();
 
-		//setup_compute();
+		setup_compute();
 
 		server = Server();
 		server.connect_to_client(PORT);
@@ -373,11 +374,13 @@ struct HostRenderer
 	{
 		VkDescriptorPoolSize poolsize_ubo			= vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, swapchain.images.size());
 		VkDescriptorPoolSize poolsize_sampler		= vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 2 * swapchain.images.size()); // 2 * so that each image_view can have a sampler
+		VkDescriptorPoolSize poolsize_storageimage	= vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, swapchain.images.size());
 		VkDescriptorPoolSize poolsize_storagebuffer = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, swapchain.images.size());
 
 		std::vector<VkDescriptorPoolSize> poolsizes;
 		poolsizes.push_back(poolsize_ubo);
 		poolsizes.push_back(poolsize_sampler);
+		poolsizes.push_back(poolsize_storageimage);
 		poolsizes.push_back(poolsize_storagebuffer);
 
 		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
@@ -767,7 +770,7 @@ struct HostRenderer
 		setup_compute_descriptor_set_layout();
 		setup_compute_pipeline();
 
-		//setup_compute_descriptor_sets();
+		setup_compute_descriptor_sets();
 	}
 
 	void setup_compute_descriptor_set_layout()
@@ -787,7 +790,7 @@ struct HostRenderer
 		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &compute.descriptor_set_layout);
 		if(descriptor_set_create != VK_SUCCESS)
 		{
-			throw std::runtime_error("Could not create compute's descriptor set layout");
+			throw std::runtime_error("Could not create compute descriptor set layout");
 		}
 	}
 
@@ -801,7 +804,7 @@ struct HostRenderer
 		}
 	}
 
-	/*void setup_compute_descriptor_sets()
+	void setup_compute_descriptor_sets()
 	{
 		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), compute.descriptor_set_layout);
 		compute.descriptor_sets.resize(swapchain.images.size());
@@ -812,24 +815,24 @@ struct HostRenderer
 
 		if(descriptor_set_alloc_result != VK_SUCCESS)
 		{
-			throw std::runtime_error("Could not allocate descriptor set");
+			throw std::runtime_error("Could not allocate compute descriptor set");
 		}
 
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info	 = vki::descriptorImageInfo()
-				VkDescriptorImageInfo image_info = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(rendered_frame_sampler, rendered_frame_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(compute.storage_buffer, 0, sizeof(glm::vec3));
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
-				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &buffer_info),
-				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &image_info),
+				vki::writeDescriptorSet(compute.descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, &image_info),
+				vki::writeDescriptorSet(compute.descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &buffer_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
 		}
-	}*/
+	}
 
 
 
