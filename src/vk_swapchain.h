@@ -10,6 +10,7 @@
 #include "vk_initializers.h"
 #include "vk_queuefamilies.h"
 #include "vk_swapchain_support.h"
+#include "vk_device.h"
 
 
 
@@ -20,6 +21,7 @@ struct VulkanSwapchain
 	VkFormat format;
 	VkExtent2D swapchain_extent;
 	std::vector<VkImageView> image_views;
+	std::vector<VkSampler> samplers;
 	std::vector<VkFramebuffer> framebuffers;
 
 	VulkanSwapchain()
@@ -87,6 +89,28 @@ struct VulkanSwapchain
 		for(uint32_t i = 0; i < images.size(); i++)
 		{
 			image_views[i] = create_image_view(device, images[i], format, VK_IMAGE_ASPECT_COLOR_BIT);
+		}
+	}
+
+	void setup_samplers(VulkanDevice device)
+	{
+		samplers.resize(images.size());
+
+		for(uint32_t i = 0; i < images.size(); i++)
+		{
+			// Create the sampler
+			VkPhysicalDeviceProperties properties;
+			vkGetPhysicalDeviceProperties(device.physical_device, &properties);
+			VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_LINEAR, VK_FILTER_LINEAR, VK_SAMPLER_MIPMAP_MODE_LINEAR,
+																	VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT, VK_SAMPLER_ADDRESS_MODE_REPEAT,
+																	0.0f, VK_TRUE, properties.limits.maxSamplerAnisotropy, VK_FALSE, VK_COMPARE_OP_ALWAYS,
+																	0.0f, 0.0f, VK_BORDER_COLOR_INT_OPAQUE_BLACK, VK_FALSE);
+
+			VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &samplers[i]);
+			if(sampler_create != VK_SUCCESS)
+			{
+				throw std::runtime_error("Could not create texture sampler");
+			}
 		}
 	}
 

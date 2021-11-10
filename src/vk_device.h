@@ -21,6 +21,7 @@ struct VulkanDevice
 	VkQueue graphics_queue;
 	VkQueue present_queue;
 	VkQueue compute_queue;
+	QueueFamilyIndices qf_indices;
 
 	VulkanDevice()
 	{
