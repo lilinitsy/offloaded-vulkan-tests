@@ -530,34 +530,37 @@ struct HostRenderer
 		// Create image that will be bound to sampler
 		create_image(device, 0,
 					 VK_IMAGE_TYPE_2D,
-					 VK_FORMAT_R8G8B8A8_SRGB,
+					 VK_FORMAT_R8G8B8A8_UNORM,
 					 texextent3D,
 					 1, 1,
 					 VK_SAMPLE_COUNT_1_BIT,
 					 VK_IMAGE_TILING_OPTIMAL,
-					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_STORAGE_BIT,
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 					 rendered_frame_attachment.image,
 					 rendered_frame_attachment.memory);
-
+		
+		
 		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
 		transition_image_layout(device, command_pool,
 								rendered_frame_attachment.image,
-								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_FORMAT_R8G8B8A8_UNORM,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
+		/*
 		// Now transition to shader read only optimal
 		transition_image_layout(device, command_pool,
 								rendered_frame_attachment.image,
-								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_FORMAT_R8G8B8A8_UNORM,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			*/
 
 		// Create image view for the colour attachment
-		rendered_frame_attachment.image_view = create_image_view(device.logical_device, rendered_frame_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		rendered_frame_attachment.image_view = create_image_view(device.logical_device, rendered_frame_attachment.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
 
 		// Create the sampler
 		VkPhysicalDeviceProperties properties;
@@ -877,7 +880,7 @@ struct HostRenderer
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(rendered_frame_sampler, rendered_frame_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(rendered_frame_sampler, rendered_frame_attachment.image_view, VK_IMAGE_LAYOUT_GENERAL);
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(compute.storage_buffer.buffer, 0, sizeof(glm::vec3));
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
