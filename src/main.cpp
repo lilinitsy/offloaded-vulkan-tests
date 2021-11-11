@@ -387,7 +387,7 @@ struct HostRenderer
 		poolsizes.push_back(poolsize_storageimage);
 		poolsizes.push_back(poolsize_storagebuffer);
 
-		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
+		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(2 * swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
 		VkResult descriptor_pool_create	   = vkCreateDescriptorPool(device.logical_device, &pool_ci, nullptr, &descriptor_pool);
 		if(descriptor_pool_create != VK_SUCCESS)
 		{
