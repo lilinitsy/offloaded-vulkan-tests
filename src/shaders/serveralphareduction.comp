@@ -1,0 +1,18 @@
+# version 450
+
+// 512 x 512 pixels for now, so going to set the workgroup to 512
+layout(local_size_x = 512) in;
+
+// Input image: rendered frame
+layout(binding = 0, rgba8) uniform readonly image2D rendered_frame;
+
+// Output 
+layout(binding = 0) buffer output_rgba
+{
+	vec3 pixels[];
+};
+
+void main()
+{
+	pixels[gl_GlobalInvocationID.x] = imageLoad(rendered_frame, ivec2(gl_GlobalInvocationId.xy)).rgb;
+}

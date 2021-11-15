@@ -6,3 +6,5 @@ glslc defaultfsquadclient.frag -o fragmentfsquadclient.spv
 
 glslc defaultserver.vert -o vertexdefaultserver.spv
 glslc defaultserver.frag -o fragmentdefaultserver.spv
+
+glslc serveralphareduction.comp -o serveralphareduction.spv
