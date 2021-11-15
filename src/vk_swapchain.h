@@ -7,10 +7,10 @@
 #include <GLFW/glfw3.h>
 #include <vulkan/vulkan.h>
 
+#include "vk_device.h"
 #include "vk_initializers.h"
 #include "vk_queuefamilies.h"
 #include "vk_swapchain_support.h"
-#include "vk_device.h"
 
 
 

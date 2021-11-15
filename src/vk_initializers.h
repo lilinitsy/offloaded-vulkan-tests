@@ -123,6 +123,17 @@ namespace vki
 		return command_pool_create_info;
 	}
 
+	inline VkCommandPoolCreateInfo commandPoolCreateInfo(VkCommandPoolCreateFlags flags, uint32_t queueFamilyIndex)
+	{
+		VkCommandPoolCreateInfo command_pool_create_info = {
+			.sType			  = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+			.flags			  = flags,
+			.queueFamilyIndex = queueFamilyIndex,
+		};
+
+		return command_pool_create_info;
+	}
+
 	inline VkCommandBufferAllocateInfo commandBufferAllocateInfo(const void *pNext, VkCommandPool commandPool, VkCommandBufferLevel level, uint32_t commandBufferCount)
 	{
 		VkCommandBufferAllocateInfo command_buffer_allocate_info = {

@@ -130,7 +130,6 @@ struct HostRenderer
 	QueueFamilyIndices qf_indices;
 
 	VkDescriptorPool descriptor_pool;
-	VkCommandPool command_pool;
 
 	Model model;
 	VkSampler tex_sampler;
@@ -148,6 +147,7 @@ struct HostRenderer
 
 	struct Graphics
 	{
+		VkCommandPool command_pool;
 		std::vector<VkCommandBuffer> command_buffers;
 
 		VkDescriptorSetLayout descriptor_set_layout;
@@ -168,6 +168,7 @@ struct HostRenderer
 	// Compute structure to organize the compute pipeline and stuff
 	struct Compute
 	{
+		VkCommandPool command_pool;
 		VkCommandBuffer command_buffer;
 
 		VkDescriptorSetLayout descriptor_set_layout;
@@ -208,7 +209,7 @@ struct HostRenderer
 
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
-		setup_command_pool();
+		setup_graphics_command_pool();
 		setup_depth();
 		setup_framebuffers();
 		setup_texture();
@@ -216,8 +217,8 @@ struct HostRenderer
 		setup_sampler();
 
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
-		initialize_vertex_buffers(device, model.vertices, &vbo, command_pool);
-		initialize_index_buffers(device, model.indices, &ibo, command_pool);
+		initialize_vertex_buffers(device, model.vertices, &vbo, graphics.command_pool);
+		initialize_index_buffers(device, model.indices, &ibo, graphics.command_pool);
 		initialize_ubos();
 
 		setup_descriptor_pool();
@@ -262,7 +263,7 @@ struct HostRenderer
 			vkDestroyFence(device.logical_device, in_flight_fences[i], nullptr);
 		}
 
-		vkDestroyCommandPool(device.logical_device, command_pool, nullptr);
+		vkDestroyCommandPool(device.logical_device, graphics.command_pool, nullptr);
 
 		device.destroy();
 
@@ -294,7 +295,7 @@ struct HostRenderer
 
 		vkDestroyDescriptorPool(device.logical_device, descriptor_pool, nullptr);
 
-		vkFreeCommandBuffers(device.logical_device, command_pool, graphics.command_buffers.size(), graphics.command_buffers.data());
+		vkFreeCommandBuffers(device.logical_device, graphics.command_pool, graphics.command_buffers.size(), graphics.command_buffers.data());
 		vkDestroyPipeline(device.logical_device, graphics.pipeline, nullptr);
 		vkDestroyPipelineLayout(device.logical_device, graphics.pipeline_layout, nullptr);
 		vkDestroyRenderPass(device.logical_device, graphics.renderpass.renderpass, nullptr);
@@ -482,15 +483,15 @@ struct HostRenderer
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 					 graphics.colour_attachment.image,
 					 graphics.colour_attachment.memory);
-		transition_image_layout(device, command_pool, graphics.colour_attachment.image,
+		transition_image_layout(device, graphics.command_pool, graphics.colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		copy_buffer_to_image(device, command_pool, staging_buffer,
+		copy_buffer_to_image(device, graphics.command_pool, staging_buffer,
 							 graphics.colour_attachment.image,
 							 texture_width,
 							 texture_height);
-		transition_image_layout(device, command_pool, graphics.colour_attachment.image,
+		transition_image_layout(device, graphics.command_pool, graphics.colour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -541,23 +542,14 @@ struct HostRenderer
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 					 rendered_frame_attachment.image,
 					 rendered_frame_attachment.memory);
-		
-		
+
+
 		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
-		transition_image_layout(device, command_pool,
+		transition_image_layout(device, graphics.command_pool,
 								rendered_frame_attachment.image,
 								VK_FORMAT_R8G8B8A8_UNORM,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-
-		/*
-		// Now transition to shader read only optimal
-		transition_image_layout(device, command_pool,
-								rendered_frame_attachment.image,
-								VK_FORMAT_R8G8B8A8_UNORM,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-			*/
 
 		// Create image view for the colour attachment
 		rendered_frame_attachment.image_view = create_image_view(device.logical_device, rendered_frame_attachment.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -690,10 +682,10 @@ struct HostRenderer
 	}
 
 
-	void setup_command_pool()
+	void setup_graphics_command_pool()
 	{
 		VkCommandPoolCreateInfo pool_ci = vki::commandPoolCreateInfo(qf_indices.graphics_qf);
-		if(vkCreateCommandPool(device.logical_device, &pool_ci, nullptr, &command_pool) != VK_SUCCESS)
+		if(vkCreateCommandPool(device.logical_device, &pool_ci, nullptr, &graphics.command_pool) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create command pool!");
 		}
@@ -703,7 +695,7 @@ struct HostRenderer
 	{
 		graphics.command_buffers.resize(swapchain.framebuffers.size());
 
-		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphics.command_buffers.size());
+		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, graphics.command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, graphics.command_buffers.size());
 
 		if(vkAllocateCommandBuffers(device.logical_device, &cmdbuf_ai, graphics.command_buffers.data()) != VK_SUCCESS)
 		{
@@ -775,8 +767,9 @@ struct HostRenderer
 		setup_compute_ssbo();
 		setup_compute_descriptor_set_layout();
 		setup_compute_pipeline();
-
 		setup_compute_descriptor_sets();
+
+		setup_compute_command_pool();
 	}
 
 	// The ssbo here is just going to take in RGB pixel data
@@ -799,7 +792,7 @@ struct HostRenderer
 					  staging_buffer);
 
 		// Can't just copy straight to the buffer for compute, it looks like, so use a command buffer
-		VkCommandBuffer copy_cmd = begin_command_buffer(device, command_pool);
+		VkCommandBuffer copy_cmd = begin_command_buffer(device, graphics.command_pool);
 		VkBufferCopy copy_region = {.size = ssbo_size};
 		vkCmdCopyBuffer(copy_cmd, staging_buffer.buffer, compute.storage_buffer.buffer, 1, &copy_region);
 
@@ -821,7 +814,7 @@ struct HostRenderer
 			vkCmdPipelineBarrier(copy_cmd, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, 0, 0, nullptr, 1, &buffer_mem_barrier, 0, nullptr);
 		}
 
-		end_command_buffer(device, command_pool, copy_cmd);
+		end_command_buffer(device, graphics.command_pool, copy_cmd);
 
 
 		/*create_buffer(device, texture_size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, staging_buffer);
@@ -863,7 +856,6 @@ struct HostRenderer
 		}
 
 		// Setup for compute pipeline
-		
 	}
 
 	void setup_compute_descriptor_sets()
@@ -893,6 +885,15 @@ struct HostRenderer
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
+		}
+	}
+
+	void setup_compute_command_pool()
+	{
+		VkCommandPoolCreateInfo cmdpool_ci = vki::commandPoolCreateInfo(VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, qf_indices.compute_qf);
+		if(vkCreateCommandPool(device.logical_device, &cmdpool_ci, nullptr, &compute.command_pool) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create compute command pool!");
 		}
 	}
 
@@ -1014,7 +1015,7 @@ struct HostRenderer
 
 		COZ_BEGIN("swapchain_image_copy");
 		// Use the most recently rendered swapchain image as the source
-		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
+		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, graphics.command_pool);
 		VkImage src_image			   = swapchain.images[current_frame];
 
 		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
@@ -1024,7 +1025,7 @@ struct HostRenderer
 
 		// Blit from the swapchain image to the copied image
 		// Transition dst image to destination layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								dst.image,
 								0,
 								VK_ACCESS_TRANSFER_WRITE_BIT,
@@ -1034,7 +1035,7 @@ struct HostRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
 		// Transition swapchain image from present to source's transfer layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								src_image,
 								VK_ACCESS_MEMORY_READ_BIT,
 								VK_ACCESS_TRANSFER_READ_BIT,
@@ -1064,7 +1065,7 @@ struct HostRenderer
 
 
 		// Transition dst image to general layout -- lets us map the image memory
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								dst.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,
 								VK_ACCESS_MEMORY_READ_BIT,
@@ -1075,7 +1076,7 @@ struct HostRenderer
 
 
 		// transition to swapchain image now that copying is done
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
+		transition_image_layout(device, graphics.command_pool, copy_cmdbuffer,
 								src_image,
 								VK_ACCESS_TRANSFER_READ_BIT,
 								VK_ACCESS_MEMORY_READ_BIT,
@@ -1084,7 +1085,7 @@ struct HostRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT,
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
 
-		end_command_buffer(device, command_pool, copy_cmdbuffer);
+		end_command_buffer(device, graphics.command_pool, copy_cmdbuffer);
 
 		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
 		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
