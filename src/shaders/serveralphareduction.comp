@@ -14,5 +14,5 @@ layout(binding = 0) buffer output_rgba
 
 void main()
 {
-	pixels[gl_GlobalInvocationID.x] = imageLoad(rendered_frame, ivec2(gl_GlobalInvocationId.xy)).rgb;
+	pixels[gl_GlobalInvocationID.x] = imageLoad(rendered_frame, ivec2(gl_GlobalInvocationID.xy)).rgb;
 }

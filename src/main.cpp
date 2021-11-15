@@ -854,12 +854,16 @@ struct HostRenderer
 
 	void setup_compute_pipeline()
 	{
+		// Setup for compute pipeline layout
 		VkPipelineLayoutCreateInfo pipeline_layout_ci = vki::pipelineLayoutCreateInfo(1, &compute.descriptor_set_layout, 0, nullptr);
 
 		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_ci, nullptr, &compute.pipeline_layout) != VK_SUCCESS)
 		{
 			throw std::runtime_error("failed to create compute pipeline layout!");
 		}
+
+		// Setup for compute pipeline
+		
 	}
 
 	void setup_compute_descriptor_sets()
@@ -873,8 +877,7 @@ struct HostRenderer
 
 		if(descriptor_set_alloc_result != VK_SUCCESS)
 		{
-			printf("Could not allocate compute descriptor set!\n");
-			//throw std::runtime_error("Could not allocate compute descriptor set");
+			throw std::runtime_error("Could not allocate compute descriptor set");
 		}
 
 		// Populate the descriptor sets
