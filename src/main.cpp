@@ -544,12 +544,31 @@ struct HostRenderer
 					 rendered_frame_attachment.memory);
 
 
-		// Transition it to transfer dst optimal since it can't be directly transitioned to shader read-only optimal
+		// Transition it to transfer dst optimal since it can't be directly transitioned to general optimal
 		transition_image_layout(device, graphics.command_pool,
 								rendered_frame_attachment.image,
 								VK_FORMAT_R8G8B8A8_UNORM,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		
+		// Transition from transfer dst optimal to general
+		/*transition_image_layout(device, graphics.command_pool,
+			rendered_frame_attachment.image,
+			VK_FORMAT_R8G8B8A8_UNORM,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			VK_IMAGE_LAYOUT_GENERAL);*/
+			VkCommandBuffer transition_cmdbuf = begin_command_buffer(device, graphics.command_pool);
+					transition_image_layout(device, graphics.command_pool, transition_cmdbuf,
+								rendered_frame_attachment.image,
+								VK_ACCESS_TRANSFER_WRITE_BIT,
+								VK_ACCESS_MEMORY_READ_BIT,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_GENERAL,
+								VK_PIPELINE_STAGE_TRANSFER_BIT,
+								VK_PIPELINE_STAGE_TRANSFER_BIT);
+			end_command_buffer(device, graphics.command_pool, transition_cmdbuf);
+
+
 
 		// Create image view for the colour attachment
 		rendered_frame_attachment.image_view = create_image_view(device.logical_device, rendered_frame_attachment.image, VK_FORMAT_R8G8B8A8_UNORM, VK_IMAGE_ASPECT_COLOR_BIT);
