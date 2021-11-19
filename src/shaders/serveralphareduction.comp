@@ -7,7 +7,7 @@ layout(local_size_x = 512) in;
 layout(binding = 0, rgba8) uniform readonly image2D rendered_frame;
 
 // Output 
-layout(binding = 0) buffer output_rgba
+layout(binding = 1) buffer output_rgba
 {
 	vec3 pixels[];
 };

@@ -764,12 +764,17 @@ struct HostRenderer
 
 	void setup_compute()
 	{
+		compute.queue = device.compute_queue;
 		setup_compute_ssbo();
 		setup_compute_descriptor_set_layout();
 		setup_compute_pipeline();
 		setup_compute_descriptor_sets();
 
 		setup_compute_command_pool();
+		setup_compute_async();
+
+		setup_compute_command_buffer();
+		exec_compute_command_buffer();
 	}
 
 	// The ssbo here is just going to take in RGB pixel data
@@ -852,10 +857,22 @@ struct HostRenderer
 
 		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_ci, nullptr, &compute.pipeline_layout) != VK_SUCCESS)
 		{
-			throw std::runtime_error("failed to create compute pipeline layout!");
+			throw std::runtime_error("failed to create compute pipeline lfayout!");
 		}
 
 		// Setup for compute pipeline
+		std::vector<char> compute_shader_code					= parse_shader_file("shaders/serveralphareduction.spv");
+		VkShaderModule compute_shader_module					= setup_shader_module(compute_shader_code, device);
+		VkPipelineShaderStageCreateInfo compute_shader_stage_ci = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_COMPUTE_BIT, compute_shader_module, "main");
+
+		VkComputePipelineCreateInfo pipeline_ci = vki::computePipelineCreateInfo();
+		pipeline_ci.stage						= compute_shader_stage_ci;
+		pipeline_ci.layout						= compute.pipeline_layout;
+
+		if(vkCreateComputePipelines(device.logical_device, nullptr, 1, &pipeline_ci, nullptr, &compute.pipeline) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create compute pipeline");
+		}
 	}
 
 	void setup_compute_descriptor_sets()
@@ -897,6 +914,51 @@ struct HostRenderer
 		}
 	}
 
+	void setup_compute_command_buffer()
+	{
+		VkCommandBufferAllocateInfo cmdbuf_ai = vki::commandBufferAllocateInfo(nullptr, compute.command_pool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, 1);
+		if(vkAllocateCommandBuffers(device.logical_device, &cmdbuf_ai, &compute.command_buffer) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to allocate command buffers!");
+		}
+	}
+
+	void exec_compute_command_buffer()
+	{
+		compute.command_buffer = begin_command_buffer(device, compute.command_pool);
+		vkQueueWaitIdle(compute.queue);
+
+		// Have vk dispatch the compute shader
+		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline);
+		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline_layout, 0, 1, &compute.descriptor_sets[0], 0, nullptr);
+		vkCmdDispatch(compute.command_buffer, 512, 1, 1);
+
+		end_command_buffer(device, compute.command_pool, compute.command_buffer);
+	}
+
+	void setup_compute_async()
+	{
+		VkSemaphoreCreateInfo semaphore_ci = vki::semaphoreCreateInfo();
+		if(vkCreateSemaphore(device.logical_device, &semaphore_ci, nullptr, &compute.semaphore) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create compute semaphore!");
+		}
+
+		// this may need to be touched up in the future
+		VkSubmitInfo submit_info		 = vki::submitInfo();
+		submit_info.signalSemaphoreCount = 1;
+		submit_info.pSignalSemaphores	 = &compute.semaphore;
+
+		if(vkQueueSubmit(compute.queue, 1, &submit_info, VK_NULL_HANDLE) != VK_SUCCESS)
+		{
+			throw std::runtime_error("failed to submit compute queue submit command buffer!");
+		}
+
+		if(vkQueueWaitIdle(compute.queue) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not idle on compute queue!");
+		}
+	}
 
 
 	void render_complete_frame()

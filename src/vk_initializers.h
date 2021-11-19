@@ -406,6 +406,15 @@ namespace vki
 		return graphics_pipeline_create_info;
 	}
 
+	inline VkComputePipelineCreateInfo computePipelineCreateInfo()
+	{
+		VkComputePipelineCreateInfo compute_pipeline_create_info = {
+			.sType = VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO,
+		};
+
+		return compute_pipeline_create_info;
+	}
+
 	//////////////////// SWAPCHAIN / IMAGES
 
 	// Only declare stype, everything else can probably be explicitly stated in its creation
