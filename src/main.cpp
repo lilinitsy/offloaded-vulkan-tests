@@ -550,15 +550,9 @@ struct HostRenderer
 								VK_FORMAT_R8G8B8A8_UNORM,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-		
-		// Transition from transfer dst optimal to general
-		/*transition_image_layout(device, graphics.command_pool,
-			rendered_frame_attachment.image,
-			VK_FORMAT_R8G8B8A8_UNORM,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			VK_IMAGE_LAYOUT_GENERAL);*/
-			VkCommandBuffer transition_cmdbuf = begin_command_buffer(device, graphics.command_pool);
-					transition_image_layout(device, graphics.command_pool, transition_cmdbuf,
+
+		VkCommandBuffer transition_cmdbuf = begin_command_buffer(device, graphics.command_pool);
+		transition_image_layout(device, graphics.command_pool, transition_cmdbuf,
 								rendered_frame_attachment.image,
 								VK_ACCESS_TRANSFER_WRITE_BIT,
 								VK_ACCESS_MEMORY_READ_BIT,
@@ -566,7 +560,7 @@ struct HostRenderer
 								VK_IMAGE_LAYOUT_GENERAL,
 								VK_PIPELINE_STAGE_TRANSFER_BIT,
 								VK_PIPELINE_STAGE_TRANSFER_BIT);
-			end_command_buffer(device, graphics.command_pool, transition_cmdbuf);
+		end_command_buffer(device, graphics.command_pool, transition_cmdbuf);
 
 
 
