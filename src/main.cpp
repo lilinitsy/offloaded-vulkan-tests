@@ -150,7 +150,14 @@ struct HostRenderer
 
 	VkDescriptorPool descriptor_pool;
 
-	VkDescriptorSetLayout descriptor_set_layout;
+	struct
+	{
+		VkDescriptorSetLayout inputs;
+		VkDescriptorSetLayout outputs;
+	} descriptor_set_layouts;
+	
+
+
 	std::vector<VkDescriptorSet> descriptor_sets;
 
 	std::vector<VkSemaphore> image_available_semaphores;
@@ -221,7 +228,7 @@ struct HostRenderer
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
 		destroy_vulkan_attachment(device.logical_device, colour_attachment);
 		destroy_vulkan_attachment(device.logical_device, depth_attachment);
-		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
+		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layouts.inputs, nullptr);
 
 		vbo.destroy(device);
 		ibo.destroy(device);
@@ -338,7 +345,7 @@ struct HostRenderer
 		descriptor_set_layout_bindings.push_back(sampler_layout_binding);
 
 		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
-		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layout);
+		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layouts.inputs);
 		if(descriptor_set_create != VK_SUCCESS)
 		{
 			throw std::runtime_error("Could not create descriptor set layout");
@@ -364,7 +371,7 @@ struct HostRenderer
 
 	void setup_descriptor_sets()
 	{
-		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), descriptor_set_layout);
+		std::vector<VkDescriptorSetLayout> layouts(swapchain.images.size(), descriptor_set_layouts.inputs);
 		descriptor_sets.resize(swapchain.images.size());
 
 		// Allocate descriptor sets
@@ -511,21 +518,6 @@ struct HostRenderer
 						VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 						storage_buffer);
-
-		// Create staging buffer
-		VulkanBuffer staging_buffer;
-		create_buffer(device, ssbo_size,
-					  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-					  staging_buffer);
-
-		// Can't just copy straight to the buffer for compute, it looks like, so use a command buffer
-		VkCommandBuffer copy_cmd = begin_command_buffer(device, command_pool);
-
-		VkBufferCopy copy_region = {.size = ssbo_size};
-		vkCmdCopyBuffer(copy_cmd, staging_buffer.buffer, storage_buffer.buffer, 1, &copy_region);
-
-		end_command_buffer(device, command_pool, copy_cmd);
 	}
 
 
@@ -581,7 +573,7 @@ struct HostRenderer
 		VkPipelineDepthStencilStateCreateInfo depth_stencil			= vki::pipelineDepthStencilStateCreateInfo(VK_TRUE, VK_TRUE, VK_COMPARE_OP_LESS, VK_FALSE, VK_FALSE, {}, {}, 0.0f, 1.0f);
 
 
-		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layout, 0, nullptr);
+		VkPipelineLayoutCreateInfo pipeline_layout_info = vki::pipelineLayoutCreateInfo(1, &descriptor_set_layouts.inputs, 0, nullptr);
 
 		if(vkCreatePipelineLayout(device.logical_device, &pipeline_layout_info, nullptr, &pipeline_layout) != VK_SUCCESS)
 		{
