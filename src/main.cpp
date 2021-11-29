@@ -162,6 +162,8 @@ struct HostRenderer
 
 		VulkanAttachment colour_attachment;
 		VulkanAttachment depth_attachment;
+
+		VkSemaphore semaphore;
 	} graphics;
 
 
@@ -772,6 +774,12 @@ struct HostRenderer
 				throw std::runtime_error("failed to create synchronization objects for a frame!");
 			}
 		}
+
+		// Create graphics semaphore
+		if(vkCreateSemaphore(device.logical_device, &semaphore_ci, nullptr, &graphics.semaphore) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create graphics semaphore");
+		}
 	}
 
 
@@ -938,15 +946,22 @@ struct HostRenderer
 
 	void exec_compute_command_buffer()
 	{
-		compute.command_buffer = begin_command_buffer(device, compute.command_pool);
 		vkQueueWaitIdle(compute.queue);
+		//compute.command_buffer = begin_command_buffer(device, compute.command_pool);
+		VkCommandBufferBeginInfo cmdbuf_bi = vki::commandBufferBeginInfo();
+		if(vkBeginCommandBuffer(compute.command_buffer, &cmdbuf_bi) != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not begin compute command buffer");
+		}
 
 		// Have vk dispatch the compute shader
 		vkCmdBindPipeline(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline);
 		vkCmdBindDescriptorSets(compute.command_buffer, VK_PIPELINE_BIND_POINT_COMPUTE, compute.pipeline_layout, 0, 1, &compute.descriptor_sets[0], 0, nullptr);
 		vkCmdDispatch(compute.command_buffer, 512, 1, 1);
 
-		end_command_buffer(device, compute.command_pool, compute.command_buffer);
+		vkEndCommandBuffer(compute.command_buffer);
+
+		//end_command_buffer(device, compute.command_pool, compute.command_buffer);
 	}
 
 	void setup_compute_async()
@@ -1005,9 +1020,9 @@ struct HostRenderer
 		}
 		images_in_flight[image_index] = in_flight_fences[current_frame];
 
-		VkSemaphore wait_semaphores[]	   = {image_available_semaphores[current_frame]};
+		VkSemaphore wait_semaphores[]	   = {compute.semaphore, image_available_semaphores[current_frame]};
 		VkPipelineStageFlags wait_stages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-		VkSemaphore signal_semaphores[]	   = {render_finished_semaphores[current_frame]};
+		VkSemaphore signal_semaphores[]	   = {graphics.semaphore, render_finished_semaphores[current_frame]};
 
 		VkSubmitInfo submit_info		 = vki::submitInfo();
 		submit_info.waitSemaphoreCount	 = 1;
@@ -1025,10 +1040,32 @@ struct HostRenderer
 			throw std::runtime_error("failed to submit draw command buffer!");
 		}
 
+		// Submit the frame to be rendered
 		VkSwapchainKHR swapchains_to_present_to[] = {swapchain.swapchain};
 		VkPresentInfoKHR present_info			  = vki::presentInfoKHR(1, signal_semaphores, 1, swapchains_to_present_to, &image_index);
 
 		vkQueuePresentKHR(device.present_queue, &present_info);
+
+
+
+		// Wait for rendering to finish
+		VkPipelineStageFlags wait_stage_mask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+
+		// Submit compute queue commands
+		VkSubmitInfo compute_submit_info = vki::submitInfo();
+		compute_submit_info.commandBufferCount = 1;
+		compute_submit_info.pCommandBuffers = &compute.command_buffer;
+		compute_submit_info.waitSemaphoreCount = 1;
+		compute_submit_info.pWaitSemaphores = &graphics.semaphore; // not sure about this
+		compute_submit_info.pWaitDstStageMask = &wait_stage_mask;
+		compute_submit_info.signalSemaphoreCount = 1;
+		compute_submit_info.pSignalSemaphores = &compute.semaphore;
+
+		if(vkQueueSubmit(compute.queue, 1, &compute_submit_info, VK_NULL_HANDLE) != VK_SUCCESS)
+		{
+				throw std::runtime_error("Could not submit compute command buffer");
+		}
+
 
 		ImagePacket image_packet = copy_swapchain_image();
 
@@ -1191,6 +1228,7 @@ struct HostRenderer
 		initialize_ubos();
 		setup_descriptor_pool();
 		setup_command_buffers();
+		exec_compute_command_buffer();
 	}
 };
 
