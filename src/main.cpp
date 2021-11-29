@@ -133,22 +133,24 @@ struct HostRenderer
 	VkPipeline graphics_pipeline;
 
 	Model model;
-	VkBuffer vbo;
-	VkBuffer ibo;
-	std::vector<VkBuffer> ubos;
-	std::vector<VkDeviceMemory> ubos_mem;
-	VkDeviceMemory vbo_mem;
-	VkDeviceMemory ibo_mem;
+	VulkanBuffer vbo;
+	VulkanBuffer ibo;
+	std::vector<VulkanBuffer> ubos;
+
+	VulkanBuffer storage_buffer;
+
 
 	VulkanAttachment colour_attachment;
 	VkSampler tex_sampler;
 	VulkanAttachment depth_attachment;
+	
 
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
 
-	VkDescriptorSetLayout descriptor_set_layout;
 	VkDescriptorPool descriptor_pool;
+
+	VkDescriptorSetLayout descriptor_set_layout;
 	std::vector<VkDescriptorSet> descriptor_sets;
 
 	std::vector<VkSemaphore> image_available_semaphores;
@@ -188,9 +190,10 @@ struct HostRenderer
 		setup_texture_image();
 		setup_sampler();
 		model = Model(MODEL_PATH, TEXTURE_PATH, glm::vec3(-1.0f, -0.5f, 0.5f));
-		initialize_vertex_buffers(device, model.vertices, &vbo, &vbo_mem, command_pool);
-		initialize_index_buffers(device, model.indices, &ibo, &ibo_mem, command_pool);
+		initialize_vertex_buffers(device, model.vertices, &vbo.buffer, &vbo.memory, command_pool);
+		initialize_index_buffers(device, model.indices, &ibo.buffer, &ibo.memory, command_pool);
 		initialize_ubos();
+		setup_ssbo();
 		setup_descriptor_pool();
 		setup_descriptor_sets();
 		setup_command_buffers();
@@ -220,10 +223,8 @@ struct HostRenderer
 		destroy_vulkan_attachment(device.logical_device, depth_attachment);
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
 
-		vkDestroyBuffer(device.logical_device, vbo, nullptr);
-		vkDestroyBuffer(device.logical_device, ibo, nullptr);
-		vkFreeMemory(device.logical_device, vbo_mem, nullptr);
-		vkFreeMemory(device.logical_device, ibo_mem, nullptr);
+		vbo.destroy(device);
+		ibo.destroy(device);
 
 		for(uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 		{
@@ -259,8 +260,7 @@ struct HostRenderer
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			vkDestroyBuffer(device.logical_device, ubos[i], nullptr);
-			vkFreeMemory(device.logical_device, ubos_mem[i], nullptr);
+			ubos[i].destroy(device);
 		}
 
 		vkDestroyDescriptorPool(device.logical_device, descriptor_pool, nullptr);
@@ -378,7 +378,7 @@ struct HostRenderer
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
+			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i].buffer, 0, sizeof(UBO));
 			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
@@ -493,12 +493,39 @@ struct HostRenderer
 	{
 		VkDeviceSize buffersize = sizeof(UBO);
 		ubos.resize(swapchain.images.size());
-		ubos_mem.resize(swapchain.images.size());
 
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			create_buffer(device, buffersize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubos[i], ubos_mem[i]);
+			create_buffer(device, buffersize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT, ubos[i]);
 		}
+	}
+
+
+	void setup_ssbo()
+	{
+		uint32_t num_pixels = SERVERWIDTH * SERVERHEIGHT;
+		VkDeviceSize ssbo_size = num_pixels * sizeof(glm::vec3);
+
+		// Create ssbo
+		create_buffer(device, ssbo_size,
+						VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+						storage_buffer);
+
+		// Create staging buffer
+		VulkanBuffer staging_buffer;
+		create_buffer(device, ssbo_size,
+					  VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+					  staging_buffer);
+
+		// Can't just copy straight to the buffer for compute, it looks like, so use a command buffer
+		VkCommandBuffer copy_cmd = begin_command_buffer(device, command_pool);
+
+		VkBufferCopy copy_region = {.size = ssbo_size};
+		vkCmdCopyBuffer(copy_cmd, staging_buffer.buffer, storage_buffer.buffer, 1, &copy_region);
+
+		end_command_buffer(device, command_pool, copy_cmd);
 	}
 
 
@@ -517,9 +544,9 @@ struct HostRenderer
 		ubo.projection[1][1] *= -1; // flip y coordinate from opengl
 
 		void *data;
-		vkMapMemory(device.logical_device, ubos_mem[current_image_index], 0, sizeof(ubo), 0, &data);
+		vkMapMemory(device.logical_device, ubos[current_image_index].memory, 0, sizeof(ubo), 0, &data);
 		memcpy(data, &ubo, sizeof(ubo));
-		vkUnmapMemory(device.logical_device, ubos_mem[current_image_index]);
+		vkUnmapMemory(device.logical_device, ubos[current_image_index].memory);
 	}
 
 
@@ -642,11 +669,11 @@ struct HostRenderer
 
 			vkCmdBindPipeline(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
-			VkBuffer vertex_buffers[] = {vbo};
+			VkBuffer vertex_buffers[] = {vbo.buffer};
 			VkDeviceSize offsets[]	  = {0};
 
 			vkCmdBindVertexBuffers(command_buffers[i], 0, 1, vertex_buffers, offsets);
-			vkCmdBindIndexBuffer(command_buffers[i], ibo, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(command_buffers[i], ibo.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 			vkCmdBindDescriptorSets(command_buffers[i], VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_layout, 0, 1, &descriptor_sets[i], 0, nullptr);
 
