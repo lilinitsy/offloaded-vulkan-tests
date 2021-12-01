@@ -137,13 +137,13 @@ struct HostRenderer
 	VulkanBuffer ibo;
 	std::vector<VulkanBuffer> ubos;
 
-	VulkanBuffer storage_buffer;
+	std::vector<VulkanBuffer> storage_buffers;
 
 
 	VulkanAttachment colour_attachment;
 	VkSampler tex_sampler;
 	VulkanAttachment depth_attachment;
-	
+
 
 	VkCommandPool command_pool;
 	std::vector<VkCommandBuffer> command_buffers;
@@ -155,7 +155,7 @@ struct HostRenderer
 		VkDescriptorSetLayout inputs;
 		VkDescriptorSetLayout outputs;
 	} descriptor_set_layouts;
-	
+
 
 
 	std::vector<VkDescriptorSet> descriptor_sets;
@@ -338,11 +338,13 @@ struct HostRenderer
 	{
 		VkDescriptorSetLayoutBinding ubo_layout_binding		= vki::descriptorSetLayoutBinding(0, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1, VK_SHADER_STAGE_VERTEX_BIT, nullptr);
 		VkDescriptorSetLayoutBinding sampler_layout_binding = vki::descriptorSetLayoutBinding(1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr);
+		VkDescriptorSetLayoutBinding ssbo_binding			= vki::descriptorSetLayoutBinding(2, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_FRAGMENT_BIT, nullptr); // Write to the SSBO from fragment shader
 
 		// Put the descriptor set descriptions into a vector
 		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings;
 		descriptor_set_layout_bindings.push_back(ubo_layout_binding);
 		descriptor_set_layout_bindings.push_back(sampler_layout_binding);
+		descriptor_set_layout_bindings.push_back(ssbo_binding);	
 
 		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
 		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layouts.inputs);
@@ -356,12 +358,14 @@ struct HostRenderer
 	{
 		VkDescriptorPoolSize poolsize_ubo	  = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, swapchain.images.size());
 		VkDescriptorPoolSize poolsize_sampler = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, swapchain.images.size());
+		VkDescriptorPoolSize poolsize_ssbo	  = vki::descriptorPoolSize(VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, swapchain.images.size());
 
 		std::vector<VkDescriptorPoolSize> poolsizes;
 		poolsizes.push_back(poolsize_ubo);
 		poolsizes.push_back(poolsize_sampler);
+		poolsizes.push_back(poolsize_ssbo);
 
-		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(swapchain.images.size(), poolsizes.size(), poolsizes.data()); // two pools
+		VkDescriptorPoolCreateInfo pool_ci = vki::descriptorPoolCreateInfo(swapchain.images.size(), poolsizes.size(), poolsizes.data()); // three pools
 		VkResult descriptor_pool_create	   = vkCreateDescriptorPool(device.logical_device, &pool_ci, nullptr, &descriptor_pool);
 		if(descriptor_pool_create != VK_SUCCESS)
 		{
@@ -385,13 +389,15 @@ struct HostRenderer
 		// Populate the descriptor sets
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
-			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i].buffer, 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorBufferInfo ubo_info	 = vki::descriptorBufferInfo(ubos[i].buffer, 0, sizeof(UBO));
+			VkDescriptorImageInfo image_info = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorBufferInfo ssbo_info = vki::descriptorBufferInfo(storage_buffers[i].buffer, 0, VK_WHOLE_SIZE); // Not sure this is the right size
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
-				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &buffer_info),
+				vki::writeDescriptorSet(descriptor_sets[i], 0, 0, 1, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, &ubo_info),
 				vki::writeDescriptorSet(descriptor_sets[i], 1, 0, 1, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, &image_info),
+				vki::writeDescriptorSet(descriptor_sets[i], 2, 0, 1, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, &ssbo_info),
 			};
 
 			vkUpdateDescriptorSets(device.logical_device, write_descriptor_sets.size(), write_descriptor_sets.data(), 0, nullptr);
@@ -510,14 +516,18 @@ struct HostRenderer
 
 	void setup_ssbo()
 	{
-		uint32_t num_pixels = SERVERWIDTH * SERVERHEIGHT;
+		uint32_t num_pixels	   = SERVERWIDTH * SERVERHEIGHT;
 		VkDeviceSize ssbo_size = num_pixels * sizeof(glm::vec3);
+		storage_buffers.resize(swapchain.images.size());
 
 		// Create ssbo
-		create_buffer(device, ssbo_size,
-						VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
-						VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-						storage_buffer);
+		for(uint32_t i = 0; i < swapchain.images.size(); i++)
+		{
+			create_buffer(device, ssbo_size,
+						  VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
+						  VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+						  storage_buffers[i]);
+		}
 	}
 
 
@@ -901,6 +911,46 @@ struct HostRenderer
 		gettimeofday(&timer_end, nullptr);
 
 		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
+
+
+
+		// Write out ssbo
+		std::string filename	   = "tmpserver" + std::to_string(numframes) + ".ppm";
+
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << SERVERHEIGHT << "\n"
+			 << 255 << "\n";
+
+
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * 3;
+
+		char *data;
+		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
+		memcpy(data, &storage_buffers[current_frame], num_bytes);
+		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
+
+		uint32_t writebuf[num_bytes];
+
+		memcpy(writebuf, data, num_bytes);
+
+		for(uint32_t j = 0; j < SERVERHEIGHT; j++)
+		{
+			uint32_t *row = (uint32_t *) data;
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				file.write((char *) row, 3);
+				row++;
+			}
+
+			data += SERVERWIDTH * sizeof(uint32_t);
+		}
+
+		file.close();
+
+
+
 		//printf("dt: %f\n", (dt / 1000000.0f));
 
 		return dst;
