@@ -517,7 +517,7 @@ struct HostRenderer
 	void setup_ssbo()
 	{
 		uint32_t num_pixels	   = SERVERWIDTH * SERVERHEIGHT;
-		VkDeviceSize ssbo_size = num_pixels * sizeof(glm::vec3);
+		VkDeviceSize ssbo_size = num_pixels * sizeof(uint32_t);
 		storage_buffers.resize(swapchain.images.size());
 
 		// Create ssbo
@@ -769,7 +769,7 @@ struct HostRenderer
 
 		vkQueuePresentKHR(device.present_queue, &present_info);
 
-		ImagePacket image_packet = copy_swapchain_image();
+		//ImagePacket image_packet = copy_swapchain_image();
 
 		timeval start_of_stream;
 		timeval end_of_stream;
@@ -785,7 +785,7 @@ struct HostRenderer
 
 		COZ_BEGIN("network_send");
 
-		send_image_to_client_by_rows(image_packet, 4);
+		send_image_to_client_by_rows(4);
 
 		COZ_END("network_send");
 
@@ -796,7 +796,7 @@ struct HostRenderer
 		gettimeofday(&end_of_stream, nullptr);
 		double stream_dt = end_of_stream.tv_sec - start_of_stream.tv_sec + (end_of_stream.tv_usec - start_of_stream.tv_usec);
 
-		image_packet.destroy(device);
+		//image_packet.destroy(device);
 
 		current_frame = (current_frame + 1) % MAX_FRAMES_IN_FLIGHT;
 
@@ -807,14 +807,21 @@ struct HostRenderer
 
 	// Send an image to the client splitting up based on however many packets we want to send / however many # of rows per image.
 	// However, passing in different numbers of rows will have to be explicitly defined on the client or in a define
-	void send_image_to_client_by_rows(ImagePacket image_packet, uint16_t numpackets)
+	void send_image_to_client_by_rows(uint16_t numpackets)
 	{
 		char line_written_code[1];
 		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * 4;
+
+		char *data;
+		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
+		memcpy(data, &storage_buffers[current_frame].buffer, num_bytes);
+		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
+
 
 		for(uint16_t i = 0; i < numpackets; i++)
 		{
-			send(server.client_fd, image_packet.data + i * framesize_bytes, framesize_bytes, 0);
+			send(server.client_fd, data + i * framesize_bytes, framesize_bytes, 0);
 			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 		}
 	}
@@ -928,7 +935,7 @@ struct HostRenderer
 
 		char *data;
 		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
-		memcpy(data, &storage_buffers[current_frame], num_bytes);
+		memcpy(data, &storage_buffers[current_frame].buffer, num_bytes);
 		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
 
 		uint32_t writebuf[num_bytes];
@@ -937,14 +944,15 @@ struct HostRenderer
 
 		for(uint32_t j = 0; j < SERVERHEIGHT; j++)
 		{
-			uint32_t *row = (uint32_t *) data;
+			//uint32_t *row = (uint32_t *) data;
 			for(uint32_t x = 0; x < SERVERWIDTH; x++)
 			{
-				file.write((char *) row, 3);
-				row++;
+				char rgb[3] = {*data, *(data + 1), *(data + 2)};
+				file.write((char *) rgb, 3);
+				data += 3;
 			}
 
-			data += SERVERWIDTH * sizeof(uint32_t);
+			//data += SERVERWIDTH * sizeof(uint32_t);
 		}
 
 		file.close();

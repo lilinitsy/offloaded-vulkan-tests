@@ -8,9 +8,9 @@ layout(location = 0) out vec4 out_colour;
 
 layout(binding = 1) uniform sampler2D tex_sampler;
 
-layout(std140, binding = 2) writeonly buffer WritePixelData
+layout(std140, binding = 2)  buffer WritePixelData
 {
-	vec3 pixels[];
+	vec4 pixels[];
 } writepixel_data;
 
 
@@ -23,6 +23,7 @@ void main()
 	int x = int(gl_FragCoord.x * fbo_width);
 	int y = int(gl_FragCoord.y * fbo_width);
 
-	int pixel_position = x + y * fbo_width;
-	writepixel_data.pixels[pixel_position] = out_colour.rgb; // write the rgb of out_colour to ssbo
+	int pixel_position = int(gl_FragCoord.x) + int(gl_FragCoord.y) * fbo_width;
+	writepixel_data.pixels[pixel_position] = out_colour.rgba; // write the rgb of out_colour to ssbo
+	out_colour.rgb = writepixel_data.pixels[pixel_position].rgb;
 }
