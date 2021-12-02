@@ -1242,12 +1242,14 @@ struct DeviceRenderer
 			 << 255 << "\n";*/
 
 		// Create buffer to read from tcp socket
-		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * sizeof(uint32_t);
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * 3;
+		VkDeviceSize num_bytes_for_image = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
 		uint32_t servbuf[num_bytes];
 
 		// Receive & map memory
 		VkDeviceSize memmap_offset = 0;
-		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes * 4, 0, (void **) &dr->server_image_data);
+		char *rgb_server_data;
+
 
 		// Map in batches of 128 rows
 		for(uint16_t i = 0; i < 4; i++)
@@ -1258,7 +1260,6 @@ struct DeviceRenderer
 
 			if(server_read != -1)
 			{
-				memcpy(dr->server_image_data + memmap_offset, servbuf, (size_t) num_bytes);
 				memmap_offset += num_bytes;
 
 				// write to ppm
@@ -1279,6 +1280,10 @@ struct DeviceRenderer
 				//write(dr->client.socket_fd, end_line_code, 1);
 			}
 		}
+
+		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes * 3, 0, (void **) &dr->server_image_data);
+		memcpy(dr->server_image_data + memmap_offset, servbuf, (size_t) num_bytes);
+
 
 		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
 		COZ_END("network_receive");
