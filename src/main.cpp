@@ -207,7 +207,7 @@ struct HostRenderer
 		setup_vk_async();
 
 		server = Server();
-		server.connect_to_client(PORT);
+		//server.connect_to_client(PORT);
 	}
 
 	void game_loop()
@@ -811,18 +811,38 @@ struct HostRenderer
 	{
 		char line_written_code[1];
 		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
-		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * 4;
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
 
 		char *data;
 		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
-		memcpy(data, &storage_buffers[current_frame].buffer, num_bytes);
+		memcpy(data, &storage_buffers[current_frame].buffer, sizeof(storage_buffers[current_frame].buffer));
 		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
 
 
-		for(uint16_t i = 0; i < numpackets; i++)
+		/*for(uint16_t i = 0; i < numpackets; i++)
 		{
 			send(server.client_fd, data + i * framesize_bytes, framesize_bytes, 0);
 			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
+		}*/
+
+		std::string filename	   = "tmpserver" + std::to_string(numframes) + ".ppm";
+
+		std::ofstream file(filename, std::ios::out | std::ios::binary);
+		file << "P6\n"
+			 << SERVERWIDTH << "\n"
+			 << SERVERHEIGHT << "\n"
+			 << 255 << "\n";
+
+		for(uint32_t j = 0; j < 512; j++)
+		{
+			uint32_t *row = (uint32_t *) data;
+			for(uint32_t x = 0; x < SERVERWIDTH; x++)
+			{
+				file.write((char *) row, 3);
+				row++;
+			}
+
+			data += SERVERWIDTH;// * sizeof(uint32_t);
 		}
 	}
 
@@ -937,10 +957,6 @@ struct HostRenderer
 		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
 		memcpy(data, &storage_buffers[current_frame].buffer, num_bytes);
 		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
-
-		uint32_t writebuf[num_bytes];
-
-		memcpy(writebuf, data, num_bytes);
 
 		for(uint32_t j = 0; j < SERVERHEIGHT; j++)
 		{
