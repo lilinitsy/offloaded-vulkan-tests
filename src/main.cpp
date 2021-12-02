@@ -776,16 +776,31 @@ struct HostRenderer
 		//printf("frame dt: %f\n", (dt / 1000000.0f));
 	}
 
+	void rgba_to_rgb(const uint8_t *in, uint8_t *out, size_t len)
+	{
+		for(size_t i = 0, j = 0; i < len; i += 4, j += 3)
+		{
+			out[j + 0] = in[i + 0];
+			out[j + 1] = in[i + 1];
+			out[j + 2] = in[i + 2];
+		}
+	}
+
+
 	// Send an image to the client splitting up based on however many packets we want to send / however many # of rows per image.
 	// However, passing in different numbers of rows will have to be explicitly defined on the client or in a define
 	void send_image_to_client_by_rows(ImagePacket image_packet, uint16_t numpackets)
 	{
 		char line_written_code[1];
 		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
+		size_t num_pixels = SERVERWIDTH * SERVERHEIGHT / numpackets;
 
 		for(uint16_t i = 0; i < numpackets; i++)
 		{
-			send(server.client_fd, image_packet.data + i * framesize_bytes, framesize_bytes, 0);
+			uint8_t sendpacket[framesize_bytes];
+			rgba_to_rgb((uint8_t*) image_packet.data + i * framesize_bytes, sendpacket, framesize_bytes);
+
+			send(server.client_fd, sendpacket, framesize_bytes, 0);
 			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 		}
 	}
