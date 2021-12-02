@@ -25,6 +25,8 @@ void main()
 	int y = int(gl_FragCoord.y * fbo_width);
 
 	int pixel_position = int(gl_FragCoord.x) + int(gl_FragCoord.y); // * fbo_width;
-	writepixel_data.pixels[pixel_position] = out_colour; // write the rgb of out_colour to ssbo
+	//writepixel_data.pixels[pixel_position] = out_colour; // write the rgb of out_colour to ssbo
+	//out_colour = writepixel_data.pixels[pixel_position];
+	writepixel_data.pixels[pixel_position] = vec4(1.0, 1.0, 1.0, 1.0);
 	out_colour = writepixel_data.pixels[pixel_position];
 }
