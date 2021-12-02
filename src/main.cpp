@@ -344,7 +344,7 @@ struct HostRenderer
 		std::vector<VkDescriptorSetLayoutBinding> descriptor_set_layout_bindings;
 		descriptor_set_layout_bindings.push_back(ubo_layout_binding);
 		descriptor_set_layout_bindings.push_back(sampler_layout_binding);
-		descriptor_set_layout_bindings.push_back(ssbo_binding);	
+		descriptor_set_layout_bindings.push_back(ssbo_binding);
 
 		VkDescriptorSetLayoutCreateInfo descriptor_set_ci = vki::descriptorSetLayoutCreateInfo(descriptor_set_layout_bindings.size(), descriptor_set_layout_bindings.data());
 		VkResult descriptor_set_create					  = vkCreateDescriptorSetLayout(device.logical_device, &descriptor_set_ci, nullptr, &descriptor_set_layouts.inputs);
@@ -516,7 +516,7 @@ struct HostRenderer
 
 	void setup_ssbo()
 	{
-		uint32_t num_pixels	   = SERVERWIDTH * SERVERHEIGHT;
+		uint32_t num_pixels	   = SERVERWIDTH * SERVERHEIGHT * 4;
 		VkDeviceSize ssbo_size = num_pixels * sizeof(uint32_t);
 		storage_buffers.resize(swapchain.images.size());
 
@@ -811,10 +811,10 @@ struct HostRenderer
 	{
 		char line_written_code[1];
 		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
-		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
+		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * 4 * sizeof(uint32_t);
 
 		char *data;
-		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
+		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void **) &data);
 		memcpy(data, &storage_buffers[current_frame].buffer, sizeof(storage_buffers[current_frame].buffer));
 		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
 
@@ -825,7 +825,7 @@ struct HostRenderer
 			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 		}*/
 
-		std::string filename	   = "tmpserver" + std::to_string(numframes) + ".ppm";
+		std::string filename = "tmpserver" + std::to_string(numframes) + ".ppm";
 
 		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
@@ -842,7 +842,7 @@ struct HostRenderer
 				row++;
 			}
 
-			data += SERVERWIDTH;// * sizeof(uint32_t);
+			data += SERVERWIDTH; // * sizeof(uint32_t);
 		}
 	}
 
@@ -942,7 +942,7 @@ struct HostRenderer
 
 
 		// Write out ssbo
-		std::string filename	   = "tmpserver" + std::to_string(numframes) + ".ppm";
+		std::string filename = "tmpserver" + std::to_string(numframes) + ".ppm";
 
 		std::ofstream file(filename, std::ios::out | std::ios::binary);
 		file << "P6\n"
@@ -954,7 +954,7 @@ struct HostRenderer
 		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT * 3;
 
 		char *data;
-		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void**) &data);
+		vkMapMemory(device.logical_device, storage_buffers[current_frame].memory, 0, num_bytes, 0, (void **) &data);
 		memcpy(data, &storage_buffers[current_frame].buffer, num_bytes);
 		vkUnmapMemory(device.logical_device, storage_buffers[current_frame].memory);
 
