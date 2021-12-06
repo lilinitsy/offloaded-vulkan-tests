@@ -23,7 +23,8 @@ const std::vector<const char*> required_validation_layers =
 
 const std::vector<const char*> required_device_extensions = 
 {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	VK_KHR_8BIT_STORAGE_EXTENSION_NAME,
 };
 // clang-format on
 
