@@ -1242,48 +1242,17 @@ struct DeviceRenderer
 			 << 255 << "\n";*/
 
 		// Create buffer to read from tcp socket
-		VkDeviceSize num_bytes = SERVERWIDTH * SERVERHEIGHT / 4 * 3;
+		VkDeviceSize num_bytes_network_read			 = SERVERWIDTH * SERVERHEIGHT * 3;
 		VkDeviceSize num_bytes_for_image = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
-		uint8_t servbuf[num_bytes];
+		uint8_t servbuf[num_bytes_network_read];
 
-		// Receive & map memory
-		VkDeviceSize memmap_offset = 0;
-		
+		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_network_read, 0, (void **) &dr->server_image_data);
 
+		int server_read = recv(dr->client.socket_fd, servbuf, num_bytes_network_read, MSG_WAITALL);
 
-		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes * 4, 0, (void **) &dr->server_image_data);
-
-		// Map in batches of 128 rows
-		for(uint16_t i = 0; i < 4; i++)
+		if(server_read != -1)
 		{
-			size_t servbufidx = 0;
-
-			int server_read = recv(dr->client.socket_fd, servbuf, num_bytes, MSG_WAITALL);
-
-			if(server_read != -1)
-			{
-				rgb_to_rgba(servbuf, dr->server_image_data + memmap_offset, num_bytes);
-
-				//memcpy(dr->server_image_data + memmap_offset, servbuf, (size_t) num_bytes);
-				memmap_offset += num_bytes;
-
-				// write to ppm
-				/*for(uint32_t j = 0; j < 128; j++)
-				{
-					uint32_t *row = (uint32_t *) dr->server_image_data;
-					for(uint32_t x = 0; x < SERVERWIDTH; x++)
-					{
-						file.write((char *) row, 3);
-						row++;
-					}
-
-					dr->server_image_data += num_bytes / 128;
-				}*/
-
-				// Transmit to server that code was written
-				//char end_line_code[1] = {'d'};
-				//write(dr->client.socket_fd, end_line_code, 1);
-			}
+			rgb_to_rgba(servbuf, dr->server_image_data, num_bytes_for_image);
 		}
 
 		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);

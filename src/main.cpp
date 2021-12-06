@@ -756,7 +756,7 @@ struct HostRenderer
 
 		COZ_BEGIN("network_send");
 
-		send_image_to_client_by_rows(image_packet, 4);
+		send_image_to_client_by_rows(image_packet, 1);
 
 		COZ_END("network_send");
 
@@ -783,12 +783,12 @@ struct HostRenderer
 	{
 		char line_written_code[1];
 		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * 3;
-		size_t num_pixels = SERVERWIDTH * SERVERHEIGHT / numpackets;
+		size_t num_pixels	   = SERVERWIDTH * SERVERHEIGHT / numpackets;
 
 		for(uint16_t i = 0; i < numpackets; i++)
 		{
 			uint8_t sendpacket[framesize_bytes];
-			rgba_to_rgb((uint8_t*) image_packet.data + i * framesize_bytes, sendpacket, framesize_bytes);
+			rgba_to_rgb((uint8_t *) image_packet.data + i * framesize_bytes, sendpacket, framesize_bytes);
 
 			send(server.client_fd, sendpacket, framesize_bytes, 0);
 			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
