@@ -1246,7 +1246,7 @@ struct DeviceRenderer
 		VkDeviceSize num_bytes_for_image = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
 		uint8_t servbuf[num_bytes_network_read];
 
-		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_network_read, 0, (void **) &dr->server_image_data);
+		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_for_image, 0, (void **) &dr->server_image_data);
 
 		int server_read = recv(dr->client.socket_fd, servbuf, num_bytes_network_read, MSG_WAITALL);
 

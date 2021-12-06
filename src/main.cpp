@@ -782,15 +782,15 @@ struct HostRenderer
 	void send_image_to_client_by_rows(ImagePacket image_packet, uint16_t numpackets)
 	{
 		char line_written_code[1];
-		size_t framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * 3;
-		size_t num_pixels	   = SERVERWIDTH * SERVERHEIGHT / numpackets;
+		size_t output_framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * 3;
+		size_t input_framesize_bytes	   = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
 
 		for(uint16_t i = 0; i < numpackets; i++)
 		{
-			uint8_t sendpacket[framesize_bytes];
-			rgba_to_rgb((uint8_t *) image_packet.data + i * framesize_bytes, sendpacket, framesize_bytes);
+			uint8_t sendpacket[output_framesize_bytes];
+			rgba_to_rgb((uint8_t *) image_packet.data + i * output_framesize_bytes, sendpacket, input_framesize_bytes);
 
-			send(server.client_fd, sendpacket, framesize_bytes, 0);
+			send(server.client_fd, sendpacket, output_framesize_bytes, 0);
 			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
 		}
 	}
