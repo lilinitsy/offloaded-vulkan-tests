@@ -207,7 +207,7 @@ struct HostRenderer
 		setup_vk_async();
 
 		server = Server();
-		//server.connect_to_client(PORT);
+		server.connect_to_client(PORT);
 	}
 
 	void game_loop()

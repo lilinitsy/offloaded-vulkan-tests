@@ -76,19 +76,19 @@ struct VulkanDevice
 
 
 		VkPhysicalDevice8BitStorageFeatures byte_storage_device_features = {
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
-			.pNext = nullptr,
-			.storageBuffer8BitAccess = true,
+			.sType							   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
+			.pNext							   = nullptr,
+			.storageBuffer8BitAccess		   = true,
 			.uniformAndStorageBuffer8BitAccess = true,
-			.storagePushConstant8 = true,
+			.storagePushConstant8			   = true,
 		};
 
 		VkPhysicalDeviceFeatures device_features = {};
 		device_features.samplerAnisotropy		 = VK_TRUE;
-		
 
 
-		VkDeviceCreateInfo logical_device_ci	 = vki::deviceCreateInfo(device_queue_ci.size(), &byte_storage_device_features, device_queue_ci.data(), required_validation_layers.size(), required_validation_layers.data(), required_device_extensions.size(), required_device_extensions.data(), &device_features);
+
+		VkDeviceCreateInfo logical_device_ci = vki::deviceCreateInfo(device_queue_ci.size(), &byte_storage_device_features, device_queue_ci.data(), required_validation_layers.size(), required_validation_layers.data(), required_device_extensions.size(), required_device_extensions.data(), &device_features);
 
 
 		if(vkCreateDevice(physical_device, &logical_device_ci, nullptr, &logical_device) != VK_SUCCESS)
