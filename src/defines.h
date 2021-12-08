@@ -25,6 +25,7 @@ const std::vector<const char*> required_device_extensions =
 {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 	VK_KHR_8BIT_STORAGE_EXTENSION_NAME,
+	VK_KHR_SHADER_FLOAT16_INT8_EXTENSION_NAME,
 };
 // clang-format on
 
