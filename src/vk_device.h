@@ -75,9 +75,18 @@ struct VulkanDevice
 		}
 
 
+		// Capabilities for shaders to use 8 bit ints
+		VkPhysicalDeviceShaderFloat16Int8Features byte_shader_device_features = {
+			.sType		   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FLOAT16_INT8_FEATURES_KHR,
+			.pNext		   = nullptr,
+			.shaderFloat16 = false,
+			.shaderInt8	   = true,
+		};
+
+		// Capability to have storage buffers use 8-bit ints
 		VkPhysicalDevice8BitStorageFeatures byte_storage_device_features = {
 			.sType							   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_8BIT_STORAGE_FEATURES,
-			.pNext							   = nullptr,
+			.pNext							   = &byte_shader_device_features,
 			.storageBuffer8BitAccess		   = true,
 			.uniformAndStorageBuffer8BitAccess = true,
 			.storagePushConstant8			   = true,
@@ -85,8 +94,6 @@ struct VulkanDevice
 
 		VkPhysicalDeviceFeatures device_features = {};
 		device_features.samplerAnisotropy		 = VK_TRUE;
-
-
 
 		VkDeviceCreateInfo logical_device_ci = vki::deviceCreateInfo(device_queue_ci.size(), &byte_storage_device_features, device_queue_ci.data(), required_validation_layers.size(), required_validation_layers.data(), required_device_extensions.size(), required_device_extensions.data(), &device_features);
 
