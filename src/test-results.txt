@@ -1,3 +1,6 @@
 8th of October:
 - Averaged 16.2fps over 200 frames at 220Mbps
 - Removing some send calls from the client puts it at 26.05fps over 200 frames at 220Mbps
+
+9th of December:
+- Averaged 41.18 fps over 200 frames at 252Mbp with the vectorize-alpha code
