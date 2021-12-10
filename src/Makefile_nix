@@ -9,10 +9,22 @@ LDFLAGS += $(shell pkg-config --libs vulkan)
 all: rendertest client
 .PHONY: all
 
-rendertest: main.o
-	$(CXX) $(LDFLAGS) -o $(@) $(^)
-client: client.o
-	$(CXX) $(LDFLAGS) -o $(@) $(^)
+rendertest: main.o shaders/vertexdefaultserver.spv shaders/fragmentdefaultserver.spv
+	$(CXX) $(LDFLAGS) -o $(@) $(<)
+client: client.o shaders/vertexmodelclient.spv shaders/fragmentmodelclient.spv shaders/vertexfsquadclient.spv shaders/fragmentfsquadclient.spv
+	$(CXX) $(LDFLAGS) -o $(@) $(<)
 
 %.o: %.cpp
 	$(CXX) $(CXXFLAGS) -c -o $(@) $(<)
+shaders/vertexmodelclient.spv: shaders/defaultmodelclient.vert
+	glslc shaders/defaultmodelclient.vert -o shaders/vertexmodelclient.spv
+shaders/fragmentmodelclient.spv: shaders/defaultmodelclient.frag
+	glslc shaders/defaultmodelclient.frag -o shaders/fragmentmodelclient.spv
+shaders/vertexfsquadclient.spv: shaders/defaultfsquadclient.vert
+	glslc shaders/defaultfsquadclient.vert -o shaders/vertexfsquadclient.spv
+shaders/fragmentfsquadclient.spv: shaders/defaultfsquadclient.frag
+	glslc shaders/defaultfsquadclient.frag -o shaders/fragmentfsquadclient.spv
+shaders/vertexdefaultserver.spv: shaders/defaultserver.vert
+	glslc shaders/defaultserver.vert -o shaders/vertexdefaultserver.spv
+shaders/fragmentdefaultserver.spv: shaders/defaultserver.frag
+	glslc shaders/defaultserver.frag -o shaders/fragmentdefaultserver.spv
