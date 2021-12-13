@@ -756,7 +756,7 @@ struct HostRenderer
 
 		COZ_BEGIN("network_send");
 
-		send_image_to_client_by_rows(image_packet, 1);
+		send_image_to_client(image_packet);
 
 		COZ_END("network_send");
 
@@ -779,20 +779,14 @@ struct HostRenderer
 
 	// Send an image to the client splitting up based on however many packets we want to send / however many # of rows per image.
 	// However, passing in different numbers of rows will have to be explicitly defined on the client or in a define
-	void send_image_to_client_by_rows(ImagePacket image_packet, uint16_t numpackets)
+	void send_image_to_client(ImagePacket image_packet)
 	{
-		char line_written_code[1];
-		size_t output_framesize_bytes = SERVERWIDTH * SERVERHEIGHT / numpackets * 3;
-		size_t input_framesize_bytes	   = SERVERWIDTH * SERVERHEIGHT / numpackets * sizeof(uint32_t);
+		size_t output_framesize_bytes = SERVERWIDTH * SERVERHEIGHT * 3;
+		size_t input_framesize_bytes  = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
 
-		for(uint16_t i = 0; i < numpackets; i++)
-		{
-			uint8_t sendpacket[output_framesize_bytes];
-			rgba_to_rgb((uint8_t *) image_packet.data + i * output_framesize_bytes, sendpacket, input_framesize_bytes);
-
-			send(server.client_fd, sendpacket, output_framesize_bytes, 0);
-			//int client_read = recv(server.client_fd, line_written_code, 1, MSG_WAITALL);
-		}
+		uint8_t sendpacket[output_framesize_bytes];
+		rgba_to_rgb((uint8_t *) image_packet.data, sendpacket, input_framesize_bytes);
+		send(server.client_fd, sendpacket, output_framesize_bytes, 0);
 	}
 
 
