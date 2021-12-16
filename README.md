@@ -1,10 +1,6 @@
 # offloaded-vulkan-tests
 Very lightweight test engine for offloaded rendering using Vulkan. A lot of it is adapted either from vulkan-tutorial, vkguide, and sascha's vulkan samples.
 
-Functioning code with scanline networking: https://github.com/lilinitsy/offloaded-vulkan-tests/commit/40b1ca8c18d44c57f8c2e603a1c53dc4eb45b6bb
-
-Functioning code with server frame sent as one buffer: https://github.com/lilinitsy/offloaded-vulkan-tests/commit/28a07d2fec9e1f523faf5296d2f7e868761e0eeb
-
 At a high level overview, the server will render a high fidelity central region of the viewport and send that rendered frame over a TCP socket to the client.
 The client renders the entire scene, but at a lower resolution and upscales with foveated rendering. 
 The server frame is rendered at the center of the client's frame with a fullscreen quad.
@@ -16,6 +12,7 @@ Streaming the entire frame, fully rendered, is typically not possible due to con
 These can be:
 - Converting the rendered image to video frames on the server and sending them to a client (see: A Log-Rectilinear Transformation for Foveated 360-degree Video Streaming, and many others along this line of work)
 - Neural rendering can be employed to upscale a lower resolution video (see: Facebook's DeepFovea). 
+
 These typically have a high powered GPU working on the server to perform the inititial rendering of the subsampled frame, and then have a lot of even more high-powered GPU's to perform some kind of TSAA-style inference -- the problem with this is that they also require some very complex, trained AI, and need a lot of compute power to do the inference in real-time.
 
 ## Advantages of this approach
@@ -24,7 +21,7 @@ These typically have a high powered GPU working on the server to perform the ini
 
 ## Probable Disadvantages of this approach
 - To compute the same frame for the server and the client, they both need to keep a copy of the game's vertex data. 
-In the context of a game with stochastic behaviour, this means that the stochastic behaviour must be modeled across both "copies" of the game, increasing the bandwidth beyond just the rendered frames - that or send any random variables across the network as well. 
+- In the context of a game with stochastic behaviour, this means that the stochastic behaviour must be modeled across both "copies" of the game, increasing the bandwidth beyond just the rendered frames - that or send any random variables across the network as well. 
 - Mouse and keyboard I/O from the client to server will probably need some sort of blocking to upload camera position and UBO's.
 This is annoying and slow if single-threaded, and not exactly trivial to multithread.
 
@@ -32,9 +29,9 @@ This is annoying and slow if single-threaded, and not exactly trivial to multith
 Here, I'll detail the important parts of the vulkan setup.
 
 The server goes through a normal rendering loop, with only one minimum renderpass and one minimum set of shaders. 
-After the frame has been rendered (and presented through the swapchain, although that's not strictly necessary), the swapchain image is copied to a CPU-visible buffer and sent over the network to the client. 
+After the frame has been rendered (and presented through the swapchain, although that's not strictly necessary), the swapchain image is copied to a CPU-visible buffer and sent over the network to the client. To avoid sending extra packets (alpha values primarily), the CPU will go through a vectorized loop and remove the alpha values. This turned out to not be doable in glsl, since vec3 buffers are the same size as vec4's. There may be a way to do this in OpenCL with some Vulkan extensions, but those have not yet been explored.
 
-The client will do a first renderpass that generates a low quality frame. A second renderpass should run after it receives the server's swapchain image, and it will display the two frames together, with the server's frame comprising the center pixels of the second renderpass, which outputs to the client's swapchain. 
+The client will do a first renderpass that generates a low quality frame. A second renderpass runs after it receives the server's swapchain image, and it will display the two frames together, with the server's frame comprising the center pixels of the second renderpass, which outputs to the client's swapchain. 
 
 In the subsequent subsections, I will describe the changes in Vulkan (with code) that need to be changed to get this working.
 
@@ -113,7 +110,7 @@ struct ImagePacket
 ```
 
 In the ``copy_swapchain_image()`` function of ``main.cpp``, this is used. 
-So it creates an image (and this runs every frame, so creating the image beforehand is probably going to be one of those micro-optimizations that should be done at some point, and just reuse that image by overwriting the memory each frame instead), transitions it to an appropriate layout to be copyable, and copies the swapchain image to it. 
+It creates an image (and this runs every frame, so creating the image beforehand is probably going to be one of those micro-optimizations that should be done at some point, and just reuse that image by overwriting the memory each frame instead), transitions it to an appropriate layout to be copyable, and copies the swapchain image to it. 
 The transition setup is important, but the actual copy itself is done with:
 
 ```cpp
@@ -132,64 +129,48 @@ vkQueuePresentKHR(device.present_queue, &present_info);
 ImagePacket image_packet = copy_swapchain_image();
 ```
 
-This char *data in the ``ImagePacket`` struct is a little sus. It's a pointer to the underlying image memory, but it seems it only points to one row of the image at a time, and has to be incremented by the subresource layout's rowPitch. The code to send the packet is then broken up into a for loop, sending one line of the image at a time, which creates more overhead.
+This char *data in the ``ImagePacket`` struct is a little sus. It's a pointer to the underlying image memory, but it seems it only points to one row of the image at a time, and has to be incremented by the subresource layout's rowPitch.
+
+The imagepacket data is originally packing ``R8G8B8A8`` values into a ``uint32_t``. The vectorized ``rgba_to_rgb`` (utils.h) unpacks those very quickly to reduce network latency. 
 
 ```cpp
-for(uint32_t i = 0; i < SERVERHEIGHT; i++)
+void send_image_to_client(ImagePacket image_packet)
 {
-	// Send scanline
-	uint32_t *row = (uint32_t *) image_packet.data;
-	send(server.client_fd, row, SERVERWIDTH * sizeof(uint32_t), 0);
+	size_t output_framesize_bytes = SERVERWIDTH * SERVERHEIGHT * 3;
+	size_t input_framesize_bytes	   = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
 
-	// Receive code that line has been written
-	char code[8];
-	int client_read = read(server.client_fd, code, 8);
-	image_packet.data += image_packet.subresource_layout.rowPitch;
+	uint8_t sendpacket[output_framesize_bytes];
+	rgba_to_rgb((uint8_t *) image_packet.data, sendpacket, input_framesize_bytes);
+	send(server.client_fd, sendpacket, output_framesize_bytes, 0);
 }
+
 ```
 
-The server waits for the client to send a code that it has read the line before proceeding to the next. The branch ``scaline-optimization`` has work to correct this, although is currently incomplete.
 
-Over on the client's side, ``receive_swapchain_image()`` will retrieve the swapchain image that was sent by the server.
+
+Over on the client's side, ``receive_swapchain_image()`` will retrieve the swapchain image that was sent by the server. It ends up having to copy back in the alpha values though, in order to easily input it as a sampler.
 
 ```cpp
-uint32_t servbuf[SERVERWIDTH];
-VkDeviceSize num_bytes = SERVERWIDTH * sizeof(uint32_t);
+	VkDeviceSize num_bytes_network_read = SERVERWIDTH * SERVERHEIGHT * 3;
+	VkDeviceSize num_bytes_for_image	= SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
+	uint8_t servbuf[num_bytes_network_read];
 
-// Fetch server frame
-for(uint32_t i = 0; i < SERVERHEIGHT; i++)
-{
-	// Read from server
-	int server_read = read(client.socket_fd, servbuf, SERVERWIDTH * sizeof(uint32_t));
+	vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_for_image, 0, (void **) &dr->server_image_data);
+
+	int server_read = recv(dr->client.socket_fd, servbuf, num_bytes_network_read, MSG_WAITALL);
 
 	if(server_read != -1)
 	{
-		// Map the image buffer memory using char *data at the current memcpy offset based on the current read
-		vkMapMemory(device.logical_device, image_buffer_memory, memcpy_offset, num_bytes, 0, (void **) &data);
-		memcpy(data, servbuf, (size_t) num_bytes);
-		vkUnmapMemory(device.logical_device, image_buffer_memory);
-
-		// Increase the memcpy offset to be representative of the next row's pixels
-		memcpy_offset += num_bytes;
-
-		// Send next row num back for server to print out
-		uint32_t pixelnum	= i + memcpy_offset / num_bytes;
-		std::string strcode = std::to_string(pixelnum);
-		char *code			= (char *) strcode.c_str();
-		write(client.socket_fd, code, 8);
+		rgb_to_rgba(servbuf, dr->server_image_data, num_bytes_for_image);
 	}
-}
+
+	vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
+
 ```
-This is read into a uint32_t buffer of size SERVERWIDTH, which is equivalent to one row. 
-Each row encoded by the server is read from a ``char *data`` pointer; but we're reading it into a uint32_t pointer. How??? Well, the bytes match. 
-``uint32_t`` is 4 bytes, or representative of one pixel. 
-The memory is then mapped for that line to a ``VkBuffer``, and so on for each line of the swapchain image being sent to the client. 
-This is just copying it into a *buffer* though, which needs to be copied into an image that can be read in for our next renderpass via a fullscreen quad.
+The RGB values from the server are read into a ``uint8_t`` buffer containing one slot for each byte of data (with RGB comprising 3 bytes). This is then converted to 4-byte values with an alpha component added back in, encoded into a ``char *data`` pointer. The VkBuffer image memory is mapped during this to that pointer. This is just copying it into a *buffer* though, which needs to be copied into an image that can be read in for our next renderpass via a fullscreen quad.
 
 This is done in a very similar way to how the swapchain image was copied on the server side.
-The colour attachment's image is transitioned to an appropriate layout (``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL``), copied to from a VkBuffer that had its memory mapped to that ``uint32_t`` buffer, and then the image is transitioned back to be read by the shader.
-
-In the current version of the code, this is done in four "quadrants" that are actually entire rows, with each set bein 1/4th the size of the server image. This can be changed around to find an ideal number of packets to send, or to easily introduce sending tiles, as may be ideal depending on other approaches involving sending diffs.
+The colour attachment's image is transitioned to an appropriate layout (``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL``), copied to from a VkBuffer that had its memory mapped to that ``uint8_t`` buffer, and then the image is transitioned back to be read by the shader.
 
 
 ### **Putting Everything Together (command buffer setup)** (client)
@@ -200,6 +181,8 @@ We use ``vkCmdDrawIndexed`` to take advantage of the ibo.
 In the second renderpass, it renders a fullscreen quad directly to the swapchain, using the appropriately setup fullscreen quad pipeline. It only draws three triangles, on which the two samplers from the server and previous renderpass are displayed.
 
 The code for this rendering loop is very simple, because in Vulkan, the bulk of the hard stuff happens elsewhere, outside the main rendering loop.
+
+Two threads are used on the client: In one, it performs the first renderpass to render the scene as a whole while the other fetches the server's frame over the network. Once they join, the fullscreen quad pass runs.
 
 Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 16-17 fps on around a 240Mbit/s wifi connection -- this is currently while sending the server's alpha value and without concurrent command buffer writing, both of which are hits that can be alleviated.
 
@@ -216,5 +199,4 @@ Notable issues that should be fixed include:
 - ~~Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass)~~, and one thread possibly to send the UBO's over. (Partially done, the UBO's being sent are currently unhandled).
 - Fix the RGB-BGR translation that happens when the server's frame is sent to the client (minor, unconcerned)
 - Render the client's frame at a smaller resolution and have it upscaled in the second renderpass to perform some sort of foveated rendering
-- On the server, don't bother rendering to the swapchain images, and render to an RGB image to cut out the overhead from the probably unimportant alpha component.
-- "rewrite it in rust"????
+- ~~On the server, don't bother rendering to the swapchain images, and render to an RGB image to cut out the overhead from the probably unimportant alpha component.~~
