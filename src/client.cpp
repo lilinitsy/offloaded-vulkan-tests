@@ -1226,7 +1226,6 @@ struct DeviceRenderer
 		std::cout << "avg fps: " << avgfps << std::endl;
 	}
 
-	// Test function adapted from sasha's example screenshot
 	static void *receive_swapchain_image(void *devicerenderer)
 	{
 		COZ_BEGIN("network_receive");

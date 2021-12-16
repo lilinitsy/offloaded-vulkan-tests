@@ -777,8 +777,14 @@ struct HostRenderer
 	}
 
 
-	// Send an image to the client splitting up based on however many packets we want to send / however many # of rows per image.
-	// However, passing in different numbers of rows will have to be explicitly defined on the client or in a define
+	/*
+		Function that sends the image to the client.
+		It will also take out the alpha value of the swapchain's image that was
+		mapped to some char* or void* as uint8_t's.
+
+		The receiving buffer on the client needs to be able to receive
+		the same number of packets.
+	*/
 	void send_image_to_client(ImagePacket image_packet)
 	{
 		size_t output_framesize_bytes = SERVERWIDTH * SERVERHEIGHT * 3;
