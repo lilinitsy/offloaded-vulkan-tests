@@ -12,6 +12,8 @@ const uint32_t SERVERHEIGHT = 512;
 const uint32_t CLIENTWIDTH	= 1920;
 const uint32_t CLIENTHEIGHT = 1080;
 
+const float CLIENTFOV = 45.0f;
+
 const uint32_t MAX_FRAMES_IN_FLIGHT = 3;
 
 // clang-format off

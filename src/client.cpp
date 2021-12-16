@@ -51,7 +51,7 @@ std::string TEXTURE_PATH = "../models/labdesk/labdesk.jpg";
 
 #define PORT 1234
 
-Camera camera = Camera(glm::vec3(0.0f, 2.0f, 2.0f));
+Camera camera = Camera(glm::vec3(0.0f, 2.0f, 8.0f));
 
 struct
 {
