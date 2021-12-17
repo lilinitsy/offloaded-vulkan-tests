@@ -19,7 +19,13 @@ layout(binding = 0) uniform UBO
 layout(binding = 1) uniform sampler2D server_frame_sampler;
 layout(binding = 2) uniform sampler2D local_frame_sampler;
 
+float CLIENTFOV = 45.0;
+float SERVERWIDTH = 512.0;
+float CLIENTWIDTH = 1920.0;
+
+
 void main()
 {
-	out_colour = texture(server_frame_sampler, quad_uv) + texture(local_frame_sampler, quad_uv);
+	vec2 server_quaduv = quad_uv * (CLIENTFOV * (SERVERWIDTH / CLIENTWIDTH));
+	out_colour = texture(server_frame_sampler, server_quaduv) + texture(local_frame_sampler, quad_uv);
 }
