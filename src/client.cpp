@@ -1243,12 +1243,15 @@ struct DeviceRenderer
 		// Create buffer to read from tcp socket
 		VkDeviceSize num_bytes_network_read = SERVERWIDTH * SERVERHEIGHT * 3;
 		VkDeviceSize num_bytes_for_image	= SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
+		VkDeviceSize num_bytes_per_row		= SERVERWIDTH * 3;
 		uint8_t servbuf[num_bytes_network_read];
 
+		// Begin mapping the memory
 		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_for_image, 0, (void **) &dr->server_image_data);
 
 		int server_read = recv(dr->client.socket_fd, servbuf, num_bytes_network_read, MSG_WAITALL);
 
+		// Convert RGB network packets to RGBA
 		if(server_read != -1)
 		{
 			rgb_to_rgba(servbuf, dr->server_image_data, num_bytes_for_image);
@@ -1316,7 +1319,7 @@ struct DeviceRenderer
 	void create_copy_image_buffer()
 	{
 		// Create a VkBuffer
-		VkDeviceSize image_buffer_size = CLIENTWIDTH * CLIENTHEIGHT * sizeof(uint32_t);
+		VkDeviceSize image_buffer_size = SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
 		create_buffer(device, image_buffer_size,
 					  VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
 					  VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
