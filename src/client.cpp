@@ -261,10 +261,10 @@ struct DeviceRenderer
 		SwapChainSupportDetails swapchain_support = query_swapchain_support(device.physical_device, surface);
 		swapchain								  = VulkanSwapchain(swapchain_support, surface, device, window);
 		renderpass								  = VulkanRenderpass(device, swapchain);
+		setup_command_pool();
 		setup_offscreen();
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
-		setup_command_pool();
 		setup_depth();
 		setup_framebuffers();
 		setup_serverframe_sampler();
@@ -449,12 +449,13 @@ struct DeviceRenderer
 					 1, 1,
 					 VK_SAMPLE_COUNT_1_BIT,
 					 VK_IMAGE_TILING_OPTIMAL,
-					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+					 VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 					 offscreen_pass.colour_attachment.image,
 					 offscreen_pass.colour_attachment.memory);
+
 
 		// Colour attachment image view
 		offscreen_pass.colour_attachment.image_view = create_image_view(device.logical_device, offscreen_pass.colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
@@ -474,6 +475,17 @@ struct DeviceRenderer
 		{
 			throw std::runtime_error("Could not create offscreen sampler");
 		}
+
+		transition_image_layout(device,
+								command_pool,
+								offscreen_pass.colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_UNDEFINED,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+		transition_image_layout(device, command_pool, offscreen_pass.colour_attachment.image,
+								VK_FORMAT_R8G8B8A8_SRGB,
+								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 		// Renderpass creation
 		std::array<VkAttachmentDescription, 2> attachment_descriptions = {};
@@ -1087,8 +1099,62 @@ struct DeviceRenderer
 				pthread_join(vk_pthread_t.rec_image_thread, nullptr);
 			}
 
+			// Copy the memory from the server into the local frame attachment
+			// This should be done before the 2nd renderpass, cause this local frame attachment
+			// will be used as an input
+			//VkCommandBuffer copy_cmdbuf = begin_command_buffer(device, command_pool);
 
-			//sleep(1);
+			transition_image_layout(device, command_pool, command_buffers[i],
+									offscreen_pass.colour_attachment.image,
+									VK_ACCESS_MEMORY_READ_BIT,				  // src access_mask
+									VK_ACCESS_TRANSFER_WRITE_BIT,			  // dst access_mask
+									VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // current layout
+									VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // new layout to transfer to (destination)
+									VK_PIPELINE_STAGE_TRANSFER_BIT,			  // dst pipeline mask
+									VK_PIPELINE_STAGE_TRANSFER_BIT);		  // src pipeline mask
+
+			// Image subresource to be used in the vkbufferimagecopy
+			VkImageSubresourceLayers image_subresource = {
+				.aspectMask		= VK_IMAGE_ASPECT_COLOR_BIT,
+				.baseArrayLayer = 0,
+				.layerCount		= 1,
+			};
+
+			// Create the vkbufferimagecopy pregions
+			VkBufferImageCopy copy_region = {
+				.bufferOffset	   = 0,
+				.bufferRowLength   = SERVERWIDTH,
+				.bufferImageHeight = SERVERHEIGHT,
+				.imageSubresource  = image_subresource,
+				.imageExtent	   = {SERVERWIDTH, SERVERHEIGHT, 1},
+			};
+
+
+			// Perform the copy
+			vkCmdCopyBufferToImage(command_buffers[i],
+								   image_buffer,
+								   offscreen_pass.colour_attachment.image,
+								   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								   1, &copy_region);
+
+			// Transition swapchain image back
+			transition_image_layout(device, command_pool, command_buffers[i],
+									offscreen_pass.colour_attachment.image,
+									VK_ACCESS_TRANSFER_WRITE_BIT,			  // src access mask
+									VK_ACCESS_MEMORY_READ_BIT,				  // dst access mask
+									VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,	  // current layout
+									VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, // layout transitioning to
+									VK_PIPELINE_STAGE_TRANSFER_BIT,			  // pipeline flags
+									VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
+
+			//end_command_buffer(device, command_pool, copy_cmdbuf);
+
+
+
+
+
+
+
 			COZ_BEGIN("fsquad_renderpass")
 			// Second renderpass: Fullscreen quad draw
 			{
@@ -1263,6 +1329,8 @@ struct DeviceRenderer
 		COZ_BEGIN("copy_network_image");
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
+
+		/*
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(dr->device, dr->command_pool);
 
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
@@ -1310,6 +1378,7 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
 		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
+		*/
 		COZ_END("copy_network_image");
 
 		return nullptr;

@@ -35,5 +35,5 @@ void main()
 
 	bool valid_server_pixel = 	gl_FragCoord.x <= xmax && gl_FragCoord.x >= xmin &&
 								gl_FragCoord.y <= ymax && gl_FragCoord.y >= ymin;
-	out_colour = int(valid_server_pixel) * texture(server_frame_sampler, server_quad_uv) + texture(local_frame_sampler, quad_uv);
+	out_colour = texture(server_frame_sampler, quad_uv) + texture(local_frame_sampler, quad_uv);
 }
