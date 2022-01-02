@@ -26,6 +26,7 @@
 #include <vulkan/vulkan.h>
 
 #include <coz.h>
+#include <obj_loader.h>
 
 #include "camera.h"
 #include "defines.h"
@@ -911,6 +912,8 @@ struct HostRenderer
 
 int main()
 {
+	load_obj("result/models/sponza/sponza.obj");
+
 	HostRenderer host_renderer;
 	host_renderer.run();
 
