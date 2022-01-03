@@ -45,13 +45,13 @@
 #include "vk_swapchain.h"
 #include "vk_swapchain_support.h"
 
-std::string MODEL_PATH	 = "../models/labdesk/labdesk.obj";
-std::string TEXTURE_PATH = "../models/labdesk/labdesk.jpg";
+std::string MODEL_PATH	 = "../models/laurenscan/Model.obj";
+std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
 
 #define PORT 1234
 
-Camera camera = Camera(glm::vec3(0.0f, 2.0f, 8.0f));
+Camera camera = Camera(glm::vec3(0.0f, 2.0f, 6.0f));
 
 struct
 {
@@ -857,7 +857,7 @@ struct DeviceRenderer
 		camera.move(dt, window);
 
 		UBOClient ubo = {
-			.model		= glm::mat4(1.0f),
+			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
 			.view		= glm::lookAt(camera.position, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
 			.projection = glm::perspective(glm::radians(45.0f), swapchain.swapchain_extent.width / (float) swapchain.swapchain_extent.height, 0.1f, 10.0f),
 		};
@@ -1310,7 +1310,6 @@ struct DeviceRenderer
 		// Create buffer to read from tcp socket
 		VkDeviceSize num_bytes_network_read = SERVERWIDTH * SERVERHEIGHT * 3;
 		VkDeviceSize num_bytes_for_image	= SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
-		VkDeviceSize num_bytes_per_row		= SERVERWIDTH * 3;
 		uint8_t servbuf[num_bytes_network_read];
 
 		// Begin mapping the memory

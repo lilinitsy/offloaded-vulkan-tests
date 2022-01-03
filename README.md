@@ -72,6 +72,36 @@ The fullscreen quad pass is very simple -- it takes in two ``COMBINED_IMAGE_SAMP
 Sascha Willems has a great explanation [here](https://www.saschawillems.de/blog/2016/08/13/vulkan-tutorial-on-rendering-a-fullscreen-quad-without-buffers/)
 The two image sampler's come from the server's frame that was sent to the client, and from the first renderpass on the client that generated the low-quality image (which will be foveated in the future).
 
+Currently, since the server image wasn't being clipped properly in the fragment shader, it's instead copied into the client's image and that is what's displayed. The fullscreen quad pass is nevertheless kept to make it be easy to correct this, as this incurs a runtime penalty.
+
+```cpp
+			int32_t start_col_pixel = (1920 / 2 - 512 / 2);
+			int32_t start_row_pixel = (1080 / 2 - 512 / 2);
+			VkOffset3D image_offset = {
+				.x = start_col_pixel,
+				.y = start_row_pixel,
+				.z = 0,
+			};
+
+			// Create the vkbufferimagecopy pregions
+			VkBufferImageCopy copy_region = {
+				.bufferOffset	   = 0,
+				.bufferRowLength   = 0,
+				.bufferImageHeight = 0,
+				.imageSubresource  = image_subresource,
+				.imageOffset	   = image_offset,
+				.imageExtent	   = {SERVERWIDTH, SERVERHEIGHT, 1},
+			};
+
+
+			// Perform the copy
+			vkCmdCopyBufferToImage(command_buffers[i],
+								   image_buffer,
+								   offscreen_pass.colour_attachment.image,
+								   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+								   1, &copy_region);
+```
+
 ### **Server Frame Sampler Setup** (client)
 The image used with the sampler is created with usage ``VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT``, since that lets us copy to it (which is necessary when reading over the network), and also use it as input from which to sample. 
 It's then transitioned to ``VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL``, and to ``VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL`` when reading from the network.
@@ -151,21 +181,23 @@ void send_image_to_client(ImagePacket image_packet)
 Over on the client's side, ``receive_swapchain_image()`` will retrieve the swapchain image that was sent by the server. It ends up having to copy back in the alpha values though, in order to easily input it as a sampler.
 
 ```cpp
-	VkDeviceSize num_bytes_network_read = SERVERWIDTH * SERVERHEIGHT * 3;
-	VkDeviceSize num_bytes_for_image	= SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
-	uint8_t servbuf[num_bytes_network_read];
+		// Create buffer to read from tcp socket
+		VkDeviceSize num_bytes_network_read = SERVERWIDTH * SERVERHEIGHT * 3;
+		VkDeviceSize num_bytes_for_image	= SERVERWIDTH * SERVERHEIGHT * sizeof(uint32_t);
+		uint8_t servbuf[num_bytes_network_read];
 
-	vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_for_image, 0, (void **) &dr->server_image_data);
+		// Begin mapping the memory
+		vkMapMemory(dr->device.logical_device, dr->image_buffer_memory, 0, num_bytes_for_image, 0, (void **) &dr->server_image_data);
 
-	int server_read = recv(dr->client.socket_fd, servbuf, num_bytes_network_read, MSG_WAITALL);
+		int server_read = recv(dr->client.socket_fd, servbuf, num_bytes_network_read, MSG_WAITALL);
 
-	if(server_read != -1)
-	{
-		rgb_to_rgba(servbuf, dr->server_image_data, num_bytes_for_image);
-	}
+		// Convert RGB network packets to RGBA
+		if(server_read != -1)
+		{
+			rgb_to_rgba(servbuf, dr->server_image_data, num_bytes_for_image);
+		}
 
-	vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
-
+		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
 ```
 The RGB values from the server are read into a ``uint8_t`` buffer containing one slot for each byte of data (with RGB comprising 3 bytes). This is then converted to 4-byte values with an alpha component added back in, encoded into a ``char *data`` pointer. The VkBuffer image memory is mapped during this to that pointer. This is just copying it into a *buffer* though, which needs to be copied into an image that can be read in for our next renderpass via a fullscreen quad.
 
@@ -184,7 +216,7 @@ The code for this rendering loop is very simple, because in Vulkan, the bulk of 
 
 Two threads are used on the client: In one, it performs the first renderpass to render the scene as a whole while the other fetches the server's frame over the network. Once they join, the fullscreen quad pass runs.
 
-Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 16-17 fps on around a 240Mbit/s wifi connection -- this is currently while sending the server's alpha value and without concurrent command buffer writing, both of which are hits that can be alleviated.
+Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 41 fps on around a 250Mbit/s wifi connection.
 
 ![Running frame](https://github.com/lilinitsy/offloaded-vulkan-tests/blob/separate-renderpasses/screenshots/alphascrn.png)
 
@@ -198,5 +230,5 @@ Notable issues that should be fixed include:
 - Async on the server to have one thread perform the copy and send, one thread handling rendering, and one thread waiting on UBO input from the client (mouse, keyboard) to reduce the overhead from a serial pipeline
 - ~~Async on the client to have one thread read the sampler from the server, one thread performing the rendering (and waiting on the first thread after the first renderpass)~~, and one thread possibly to send the UBO's over. (Partially done, the UBO's being sent are currently unhandled).
 - Fix the RGB-BGR translation that happens when the server's frame is sent to the client (minor, unconcerned)
-- Render the client's frame at a smaller resolution and have it upscaled in the second renderpass to perform some sort of foveated rendering
+- ~~Render the client's frame at a smaller resolution and have it upscaled in the second renderpass to perform some sort of foveated rendering.~~ Partially done, will come back to it
 - ~~On the server, don't bother rendering to the swapchain images, and render to an RGB image to cut out the overhead from the probably unimportant alpha component.~~

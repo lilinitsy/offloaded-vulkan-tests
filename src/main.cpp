@@ -46,7 +46,7 @@ std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
 
 #define PORT 1234
 
-Camera camera = Camera(glm::vec3(0.0f, 2.0f, 2.0f));
+Camera camera = Camera(glm::vec3(0.0f, 2.0f, 6.0f));
 
 
 struct Server
@@ -490,7 +490,7 @@ struct HostRenderer
 
 		UBO ubo = {
 			.model		= glm::rotate(glm::mat4(1.0f), dt * glm::radians(90.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
-			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 8.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f)),
+			.view		= glm::lookAt(glm::vec3(2.0f, 2.0f, 8.0f), glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f)),
 			.projection = glm::perspective(glm::radians((float) CLIENTFOV * ((float) SERVERWIDTH / (float) CLIENTWIDTH)), swapchain.swapchain_extent.width / (float) swapchain.swapchain_extent.height, 0.1f, 10.0f),
 		};
 		ubo.projection[1][1] *= -1; // flip y coordinate from opengl
