@@ -214,7 +214,7 @@ In the second renderpass, it renders a fullscreen quad directly to the swapchain
 
 The code for this rendering loop is very simple, because in Vulkan, the bulk of the hard stuff happens elsewhere, outside the main rendering loop.
 
-Two threads are used on the client: In one, it performs the first renderpass to render the scene as a whole while the other fetches the server's frame over the network. Once they join, the fullscreen quad pass runs.
+Two threads are used on the client: In one, it performs the first renderpass to render the scene as a whole while the other fetches the server's frame over the network. Once they join, the fullscreen quad pass runs.	
 
 Here it is running. Locally, it gets 60fps (vsync) just fine. On a consumer-grade network, it can get around 41 fps on around a 250Mbit/s wifi connection.
 
