@@ -1119,29 +1119,13 @@ struct DeviceRenderer
 				.layerCount		= 1,
 			};
 
-			int32_t start_col_bytes = (1920 / 2 - 512 / 2);
-			int32_t start_row_bytes = (1080 / 2 - 512 / 2);
+			int32_t start_col_pixel = (1920 / 2 - 512 / 2);
+			int32_t start_row_pixel = (1080 / 2 - 512 / 2);
 			VkOffset3D image_offset = {
-				.x = start_col_bytes,
-				.y = start_row_bytes,
+				.x = start_col_pixel,
+				.y = start_row_pixel,
 				.z = 0,
 			};
-
-			/*VkImageBlit blit_region = {
-				.
-			}
-
-			vkCmdBlitImage(command_buffers[i],
-				server_colour_attachment.image,
-				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				offscreen_pass.colour_attachment.image,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				1,
-				blit_region,
-				VK_FILTER_LINEAR);
-			*/
-
-			//////// MAY NEED TO COPY INTO IMAGE AS ORIGINALLY AND THEN BLIT FOR OFFSETs
 
 			// Create the vkbufferimagecopy pregions
 			VkBufferImageCopy copy_region = {
