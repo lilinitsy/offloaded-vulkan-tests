@@ -1119,40 +1119,17 @@ struct DeviceRenderer
 				.layerCount		= 1,
 			};
 
-			VkOffset3D srcoffset1 = {
-				.x = 0,
-				.y = 0,
-				.z = 0,
-			};
-			VkOffset3D srcoffset2 = {
-				.x = (int32_t) SERVERWIDTH,
-				.y = (int32_t) SERVERHEIGHT,
-				.z = 0,
-			};
-
-			int32_t start_row = 1920 / 2 - 512 / 2;
-			int32_t start_col = 1080 / 2 - 512 / 2;
-			int32_t end_row = 1920 / 2 + 512 / 2;
-			int32_t end_col = 1080 / 2 + 512 / 2;
-
-			VkOffset3D dstoffset1 = {
-
-			}
-
-			int32_t start_row_bytes = 4 * (1920 / 2 - 512 / 2);
-			int32_t start_col_bytes = 4 * (1080 / 2 - 512 / 2);
+			int32_t start_col_bytes = (1920 / 2 - 512 / 2);
+			int32_t start_row_bytes = (1080 / 2 - 512 / 2);
 			VkOffset3D image_offset = {
 				.x = start_col_bytes,
 				.y = start_row_bytes,
 				.z = 0,
 			};
 
-			VkImageBlit blit_region = {
-				.srcSubresource = image_subresource,
-				.srcOffsets = blit_src_offsets,
-				.dstSubresource = image_subresource,
-				.dstOffsets = blit_dst_offsets,
-			};
+			/*VkImageBlit blit_region = {
+				.
+			}
 
 			vkCmdBlitImage(command_buffers[i],
 				server_colour_attachment.image,
@@ -1370,7 +1347,7 @@ struct DeviceRenderer
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
 
-		
+		/*
 		VkCommandBuffer copy_cmdbuf = begin_command_buffer(dr->device, dr->command_pool);
 
 		// Transition current swapchain image to be transfer_dst_optimal. Need to note the src and dst access masks
@@ -1418,7 +1395,7 @@ struct DeviceRenderer
 								VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
 		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
-		
+		*/
 		
 		COZ_END("copy_network_image");
 
