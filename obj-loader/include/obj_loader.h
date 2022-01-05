@@ -34,8 +34,18 @@ struct Models {
   size_t len;
 };
 
+struct Material {
+  const char *diffuse_texture;
+};
+
+struct Materials {
+  const struct Material *ptr;
+  size_t len;
+};
+
 struct ModelsAndMaterials {
   Models models;
+  Materials materials;
 };
 
 struct ModelsAndMaterials load_obj(const char *path);

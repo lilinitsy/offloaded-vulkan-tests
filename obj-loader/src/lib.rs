@@ -9,8 +9,8 @@ use tobj::LoadOptions;
 
 // We handle most errors by killing the process, to avoid the pain that is converting a Rust panic
 // to a C++ exception.
-fn die<T: Display>(err: T) -> ! {
-    eprintln!("{}", err);
+fn die<T: Display>(msg: &str, err: T) -> ! {
+    eprintln!("{}: {}", msg, err);
     exit(1)
 }
 
@@ -89,7 +89,7 @@ impl From<tobj::Model> for Model {
                 0
             },
             name: CString::new(model.name)
-                .unwrap_or_else(|err| die(err))
+                .unwrap_or_else(|err| die("failed to convert model name to CString", err))
                 .into_raw(),
         }
     }
@@ -98,13 +98,36 @@ impl From<tobj::Model> for Model {
 make_extern_vec!(Models, Model);
 
 #[repr(C)]
+pub struct Material {
+    // Add other properties as they're needed.
+    diffuse_texture: *mut c_char,
+}
+
+impl From<tobj::Material> for Material {
+    fn from(material: tobj::Material) -> Material {
+        Material {
+            diffuse_texture: CString::new(material.diffuse_texture)
+                .unwrap_or_else(|err| die("failed to convert texture path to CString", err))
+                .into_raw(),
+        }
+    }
+}
+
+make_extern_vec!(Materials, Material);
+
+#[repr(C)]
 pub struct ModelsAndMaterials {
     models: Models,
+    materials: Materials,
 }
 
 #[no_mangle]
 pub extern "C" fn load_obj(path: *const c_char) -> ModelsAndMaterials {
-    let path = unsafe { CStr::from_ptr(path).to_str().unwrap_or_else(|err| die(err)) };
+    let path = unsafe {
+        CStr::from_ptr(path)
+            .to_str()
+            .unwrap_or_else(|err| die("failed to convert path to String", err))
+    };
 
     let result = tobj::load_obj(
         path,
@@ -115,13 +138,19 @@ pub extern "C" fn load_obj(path: *const c_char) -> ModelsAndMaterials {
             ignore_lines: true,
         },
     );
-    let (models, materials_result) = result.unwrap_or_else(|err| die(err));
-    let materials = materials_result.unwrap_or_else(|err| die(err));
+    let (models, materials_result) =
+        result.unwrap_or_else(|err| die("Failed to load OBJ file", err));
+    let materials =
+        materials_result.unwrap_or_else(|err| die("Failed to load materials from OBJ file", err));
 
     let models = models.into_iter().map(Model::from).collect::<Vec<_>>();
+    let materials = materials
+        .into_iter()
+        .map(Material::from)
+        .collect::<Vec<_>>();
 
-    drop(materials); // TODO
     ModelsAndMaterials {
         models: Models::from(models),
+        materials: Materials::from(materials),
     }
 }
