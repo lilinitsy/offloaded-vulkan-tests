@@ -95,8 +95,15 @@ impl From<tobj::Model> for Model {
     }
 }
 
+make_extern_vec!(Models, Model);
+
+#[repr(C)]
+pub struct ModelsAndMaterials {
+    models: Models,
+}
+
 #[no_mangle]
-pub extern "C" fn load_obj(path: *const c_char) {
+pub extern "C" fn load_obj(path: *const c_char) -> ModelsAndMaterials {
     let path = unsafe { CStr::from_ptr(path).to_str().unwrap_or_else(|err| die(err)) };
 
     let result = tobj::load_obj(
@@ -113,6 +120,8 @@ pub extern "C" fn load_obj(path: *const c_char) {
 
     let models = models.into_iter().map(Model::from).collect::<Vec<_>>();
 
-    die(format!("{:#?}", materials));
-    drop(models);
+    drop(materials); // TODO
+    ModelsAndMaterials {
+        models: Models::from(models),
+    }
 }

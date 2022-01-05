@@ -11,7 +11,7 @@
         defaultPackage = packages.offloaded-vulkan-tests;
         devShell = pkgs.mkShell {
           inputsFrom = builtins.attrValues packages;
-          nativeBuildInputs = [ pkgs.crate2nix ];
+          nativeBuildInputs = [ pkgs.cargo-watch pkgs.crate2nix ];
         };
         packages = {
           obj-loader =
