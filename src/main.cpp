@@ -912,7 +912,7 @@ struct HostRenderer
 
 int main()
 {
-	auto models_and_materials = obj::load_obj("result/models/sponza/sponza.obj");
+	auto models_and_materials = obj::load_obj("models/sponza/sponza.obj");
 	printf("models_and_materials.models.len = %zu\n", models_and_materials.models.len);
 	printf("models_and_materials.materials.len = %zu\n", models_and_materials.materials.len);
 

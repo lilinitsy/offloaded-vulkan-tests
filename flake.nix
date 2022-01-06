@@ -44,8 +44,6 @@
               cp -r ${./models} $out/models
               cp -r ${packages.shaders} $out/shaders
               cp -r ${./textures} $out/textures
-              chmod 700 $out/models
-              cp -r ${packages.sponza} $out/models/sponza
             '';
           };
           shaders = pkgs.stdenvNoCC.mkDerivation {
@@ -62,12 +60,6 @@
               glslc defaultserver.frag -o $out/fragmentdefaultserver.spv
             '';
             installPhase = "true";
-          };
-          sponza = pkgs.fetchFromGitHub {
-            owner = "jimmiebergmann";
-            repo = "Sponza";
-            rev = "e0dc51331601e5174676cce1f3a3f5488699a433";
-            hash = "sha256-0wCd/G4YHBjVymVLg628R9rHvMIedmJBd1RyhQJwnLM=";
           };
         };
       });
