@@ -9,7 +9,6 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
-#include <omp.h>
 #include <set>
 #include <stdexcept>
 #include <stdio.h>
@@ -42,8 +41,8 @@
 #include "vk_swapchain.h"
 #include "vk_swapchain_support.h"
 
-std::string MODEL_PATH	 = "../models/laurenscan/Model.obj";
-std::string TEXTURE_PATH = "../models/laurenscan/Model.jpg";
+std::string MODEL_PATH	 = "models/laurenscan/Model.obj";
+std::string TEXTURE_PATH = "models/laurenscan/Model.jpg";
 
 #define PORT 1234
 
@@ -526,8 +525,8 @@ struct HostRenderer
 
 	void setup_graphics_pipeline()
 	{
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexdefaultserver.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentdefaultserver.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("src/shaders/vertexdefaultserver.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("src/shaders/fragmentdefaultserver.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 

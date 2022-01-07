@@ -45,8 +45,8 @@
 #include "vk_swapchain.h"
 #include "vk_swapchain_support.h"
 
-std::string MODEL_PATH	 = "../models/labdesk/labdesk.obj";
-std::string TEXTURE_PATH = "../models/labdesk/labdesk.jpg";
+std::string MODEL_PATH	 = "models/labdesk/labdesk.obj";
+std::string TEXTURE_PATH = "models/labdesk/labdesk.jpg";
 
 
 #define PORT 1234
@@ -864,8 +864,8 @@ struct DeviceRenderer
 		//							SETUP FOR MODEL SHADER
 		// ========================================================================
 
-		std::vector<char> vertex_shader_code   = parse_shader_file("shaders/vertexmodelclient.spv");
-		std::vector<char> fragment_shader_code = parse_shader_file("shaders/fragmentmodelclient.spv");
+		std::vector<char> vertex_shader_code   = parse_shader_file("src/shaders/vertexmodelclient.spv");
+		std::vector<char> fragment_shader_code = parse_shader_file("src/shaders/fragmentmodelclient.spv");
 		VkShaderModule vertex_shader_module	   = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module  = setup_shader_module(fragment_shader_code, device);
 
@@ -929,8 +929,8 @@ struct DeviceRenderer
 		//							SETUP FOR FSQUAD SHADER
 		// ========================================================================
 
-		vertex_shader_code							 = parse_shader_file("shaders/vertexfsquadclient.spv");
-		fragment_shader_code						 = parse_shader_file("shaders/fragmentfsquadclient.spv");
+		vertex_shader_code							 = parse_shader_file("src/shaders/vertexfsquadclient.spv");
+		fragment_shader_code						 = parse_shader_file("src/shaders/fragmentfsquadclient.spv");
 		VkShaderModule vertex_shader_module_fsquad	 = setup_shader_module(vertex_shader_code, device);
 		VkShaderModule fragment_shader_module_fsquad = setup_shader_module(fragment_shader_code, device);
 		vertex_shader_stage_info					 = vki::pipelineShaderStageCreateInfo(VK_SHADER_STAGE_VERTEX_BIT, vertex_shader_module_fsquad, "main");

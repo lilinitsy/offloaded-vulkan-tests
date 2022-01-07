@@ -1,10 +1,10 @@
 CXX = clang++
-CXXFLAGS = -fopenmp -g -O3 -mavx2 -std=c++11
-LDFLAGS = -fopenmp -g -pthread
+CXXFLAGS = -g -O3 -mavx2 -std=c++11
+LDFLAGS = -g -pthread
 
 # obj loader
 CXXFLAGS += -I../obj-loader/include
-LDFLAGS += -L../obj-loader/target/release -lobj_loader
+LDFLAGS += -L../obj-loader/target/release -lobj_loader -Wl,-rpath=$(shell realpath ../obj-loader/target/release)
 
 # External dependencies
 CXXFLAGS += $(shell pkg-config --cflags glfw3 vulkan)
