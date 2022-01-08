@@ -9,7 +9,7 @@
 #include <fstream>
 #include <iostream>
 #include <netinet/in.h>
-#include <omp.h>
+//#include <omp.h>
 #include <set>
 #include <stdexcept>
 #include <stdio.h>
