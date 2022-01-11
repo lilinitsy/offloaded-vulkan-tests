@@ -180,10 +180,11 @@ namespace vki
 	}
 
 	// not going to use flags, just ignore it, overload if I do
-	inline VkDeviceCreateInfo deviceCreateInfo(uint32_t queueCreateInfoCount, const VkDeviceQueueCreateInfo *pQueueCreateInfos, uint32_t enabledLayerCount, const char *const *ppEnabledLayerNames, uint32_t enabledExtensionCount, const char *const *ppEnabledExtensionNames, const VkPhysicalDeviceFeatures *pEnabledFeatures)
+	inline VkDeviceCreateInfo deviceCreateInfo(uint32_t queueCreateInfoCount, void *pNext, const VkDeviceQueueCreateInfo *pQueueCreateInfos, uint32_t enabledLayerCount, const char *const *ppEnabledLayerNames, uint32_t enabledExtensionCount, const char *const *ppEnabledExtensionNames, const VkPhysicalDeviceFeatures *pEnabledFeatures)
 	{
 		VkDeviceCreateInfo device_create_info = {
 			.sType					 = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+			.pNext = pNext,
 			.queueCreateInfoCount	 = queueCreateInfoCount,
 			.pQueueCreateInfos		 = pQueueCreateInfos,
 			.enabledLayerCount		 = enabledLayerCount,
