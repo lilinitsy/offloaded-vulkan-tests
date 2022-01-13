@@ -1379,7 +1379,7 @@ struct DeviceRenderer
 
 		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
 		*/
-		
+
 		COZ_END("copy_network_image");
 
 		return nullptr;

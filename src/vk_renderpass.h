@@ -32,7 +32,7 @@ struct VulkanRenderpass
 			.stencilLoadOp	= VK_ATTACHMENT_LOAD_OP_DONT_CARE,
 			.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
 			.initialLayout	= VK_IMAGE_LAYOUT_UNDEFINED,
-			.finalLayout	= VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+			.finalLayout	= VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
 		};
 
 		VkAttachmentReference colour_attachment_ref = {
@@ -67,13 +67,49 @@ struct VulkanRenderpass
 
 		std::vector<VkAttachmentDescription> attachments = {colour_attachment_description, depth_attachment_description};
 
-		VkSubpassDependency dependency = {
+		VkSubpassDependency dependencies[2];
+
+
+		dependencies[0] = {
 			.srcSubpass	   = VK_SUBPASS_EXTERNAL,
 			.dstSubpass	   = 0,
-			.srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, // fragment test for depth
-			.dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT, // fragment test for depth
-			.srcAccessMask = 0,
-			.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+			.srcStageMask  = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			.dstStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.srcAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+			.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+		};
+
+		dependencies[1] = {
+			.srcSubpass = 0,
+			.dstSubpass = VK_SUBPASS_EXTERNAL,
+			.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			.dstStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+			.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+			.dstAccessMask = VK_ACCESS_MEMORY_READ_BIT,
+			.dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT,
+		};
+
+
+		////// From sascha willems' multiview setup
+		/*
+			Bit mask that specifies which view rendering is broadcast to
+			0011 = Broadcast to first and second view (layer)
+		*/
+		uint32_t view_mask = 0b00000011;
+
+		/*
+			Bit mask that specifies correlation between views
+			An implementation may use this for optimizations (concurrent render)
+		*/
+		uint32_t correlation_mask = 0b00000011;
+
+		VkRenderPassMultiviewCreateInfo renderpass_multiview_ci = {
+			.sType = VK_STRUCTURE_TYPE_RENDER_PASS_MULTIVIEW_CREATE_INFO,
+			.subpassCount = 1,
+			.pViewMasks = &view_mask,
+			.correlationMaskCount = 1,
+			.pCorrelationMasks = &correlation_mask,
 		};
 
 		VkRenderPassCreateInfo renderpass_ci = vki::renderPassCreateInfo();
@@ -81,8 +117,11 @@ struct VulkanRenderpass
 		renderpass_ci.pAttachments			 = attachments.data();
 		renderpass_ci.subpassCount			 = 1;
 		renderpass_ci.pSubpasses			 = &subpass;
-		renderpass_ci.dependencyCount		 = 1;
-		renderpass_ci.pDependencies			 = &dependency;
+		renderpass_ci.dependencyCount		 = 2;
+		renderpass_ci.pDependencies			 = dependencies;
+		renderpass_ci.pNext = &renderpass_multiview_ci;
+
+
 
 		if(vkCreateRenderPass(device.logical_device, &renderpass_ci, nullptr, &renderpass) != VK_SUCCESS)
 		{

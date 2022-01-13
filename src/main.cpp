@@ -119,8 +119,11 @@ struct HostRenderer
 	VkDeviceMemory vbo_mem;
 	VkDeviceMemory ibo_mem;
 
-	VulkanAttachment colour_attachment;
+	VulkanAttachment texcolour_attachment;
 	VkSampler tex_sampler;
+
+	VulkanAttachment multiview_colour_attachment;
+	VkSampler multiview_sampler;
 	VulkanAttachment depth_attachment;
 
 	VkCommandPool command_pool;
@@ -162,6 +165,7 @@ struct HostRenderer
 		setup_descriptor_set_layout();
 		setup_graphics_pipeline();
 		setup_command_pool();
+		setup_multiview_colour_attachment();
 		setup_depth();
 		setup_framebuffers();
 		setup_texture();
@@ -176,8 +180,8 @@ struct HostRenderer
 		setup_command_buffers();
 		setup_vk_async();
 
-		server = Server();
-		server.connect_to_client(PORT);
+		//server = Server();
+		//server.connect_to_client(PORT);
 	}
 
 	void game_loop()
@@ -196,7 +200,7 @@ struct HostRenderer
 		cleanup_swapchain();
 
 		vkDestroySampler(device.logical_device, tex_sampler, nullptr);
-		destroy_vulkan_attachment(device.logical_device, colour_attachment);
+		destroy_vulkan_attachment(device.logical_device, texcolour_attachment);
 		destroy_vulkan_attachment(device.logical_device, depth_attachment);
 		vkDestroyDescriptorSetLayout(device.logical_device, descriptor_set_layout, nullptr);
 
@@ -359,7 +363,7 @@ struct HostRenderer
 		for(uint32_t i = 0; i < swapchain.images.size(); i++)
 		{
 			VkDescriptorBufferInfo buffer_info = vki::descriptorBufferInfo(ubos[i], 0, sizeof(UBO));
-			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, colour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+			VkDescriptorImageInfo image_info   = vki::descriptorImageInfo(tex_sampler, texcolour_attachment.image_view, VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 
 			std::vector<VkWriteDescriptorSet> write_descriptor_sets;
 			write_descriptor_sets = {
@@ -371,6 +375,39 @@ struct HostRenderer
 		}
 	}
 
+	
+	void setup_multiview_colour_attachment()
+	{
+		uint32_t multiview_layers = 2;
+		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
+		create_image(device, 0,
+					VK_IMAGE_TYPE_2D,
+					VK_FORMAT_B8G8R8A8_SRGB,
+					extent,
+					1, multiview_layers,
+					VK_SAMPLE_COUNT_1_BIT,
+					VK_IMAGE_TILING_OPTIMAL,
+					VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+					VK_SHARING_MODE_EXCLUSIVE,
+					VK_IMAGE_LAYOUT_UNDEFINED,
+					VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+					multiview_colour_attachment.image,
+					multiview_colour_attachment.memory);
+
+		multiview_colour_attachment.image_view = create_image_view(device.logical_device, multiview_colour_attachment.image, VK_FORMAT_B8G8R8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, multiview_layers);
+		VkSamplerCreateInfo sampler_ci = vki::samplerCreateInfo(VK_FILTER_NEAREST,
+			VK_FILTER_NEAREST,
+			VK_SAMPLER_MIPMAP_MODE_LINEAR,
+			VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE, VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+			0.0f, 1.0f, 0.0f, 1.0f, VK_BORDER_COLOR_FLOAT_OPAQUE_WHITE);
+
+		VkResult sampler_create = vkCreateSampler(device.logical_device, &sampler_ci, nullptr, &multiview_sampler);
+		if(sampler_create != VK_SUCCESS)
+		{
+			throw std::runtime_error("Could not create multiview sampler");
+		}
+	}
+
 
 	void setup_depth()
 	{
@@ -378,8 +415,9 @@ struct HostRenderer
 		VkFormat depth_format		  = device.find_format(formats, VK_IMAGE_TILING_OPTIMAL, VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT);
 		VkExtent3D extent			  = {swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1};
 
-		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_attachment.image, depth_attachment.memory);
-		depth_attachment.image_view = create_image_view(device.logical_device, depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT);
+		uint32_t multiview_layers = 2;
+		create_image(device, 0, VK_IMAGE_TYPE_2D, depth_format, extent, 1, multiview_layers, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, depth_attachment.image, depth_attachment.memory);
+		depth_attachment.image_view = create_image_view(device.logical_device, depth_attachment.image, depth_format, VK_IMAGE_ASPECT_DEPTH_BIT, 2);
 	}
 
 
@@ -428,17 +466,17 @@ struct HostRenderer
 					 VK_SHARING_MODE_EXCLUSIVE,
 					 VK_IMAGE_LAYOUT_UNDEFINED,
 					 VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-					 colour_attachment.image,
-					 colour_attachment.memory);
-		transition_image_layout(device, command_pool, colour_attachment.image,
+					 texcolour_attachment.image,
+					 texcolour_attachment.memory);
+		transition_image_layout(device, command_pool, texcolour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_UNDEFINED,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 		copy_buffer_to_image(device, command_pool, staging_buffer,
-							 colour_attachment.image,
+							 texcolour_attachment.image,
 							 texture_width,
 							 texture_height);
-		transition_image_layout(device, command_pool, colour_attachment.image,
+		transition_image_layout(device, command_pool, texcolour_attachment.image,
 								VK_FORMAT_R8G8B8A8_SRGB,
 								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 								VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
@@ -449,7 +487,7 @@ struct HostRenderer
 
 	void setup_texture_image()
 	{
-		colour_attachment.image_view = create_image_view(device.logical_device, colour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT);
+		texcolour_attachment.image_view = create_image_view(device.logical_device, texcolour_attachment.image, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, 1);
 	}
 
 	void setup_sampler()
@@ -573,7 +611,7 @@ struct HostRenderer
 
 		for(size_t i = 0; i < swapchain.image_views.size(); i++)
 		{
-			std::vector<VkImageView> attachments = {swapchain.image_views[i], depth_attachment.image_view};
+			std::vector<VkImageView> attachments = {multiview_colour_attachment.image_view, depth_attachment.image_view};
 			VkFramebufferCreateInfo fbo_ci		 = vki::framebufferCreateInfo(renderpass.renderpass, attachments.size(), attachments.data(), swapchain.swapchain_extent.width, swapchain.swapchain_extent.height, 1);
 
 			if(vkCreateFramebuffer(device.logical_device, &fbo_ci, nullptr, &swapchain.framebuffers[i]) != VK_SUCCESS)
@@ -774,7 +812,7 @@ struct HostRenderer
 
 		uint8_t sendpacket[output_framesize_bytes];
 		rgba_to_rgb((uint8_t *) image_packet.data, sendpacket, input_framesize_bytes);
-		send(server.client_fd, sendpacket, output_framesize_bytes, 0);
+		//send(server.client_fd, sendpacket, output_framesize_bytes, 0);
 	}
 
 

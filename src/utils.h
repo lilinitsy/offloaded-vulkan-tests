@@ -27,7 +27,7 @@ static std::vector<char> parse_shader_file(const std::string &filename)
 }
 
 
-void rgba_to_rgb(const uint8_t* __restrict__ in, uint8_t* __restrict__ out, size_t len)
+void rgba_to_rgb(const uint8_t *__restrict__ in, uint8_t *__restrict__ out, size_t len)
 {
 	for(size_t i = 0, j = 0; i < len; i += 4, j += 3)
 	{
@@ -38,9 +38,9 @@ void rgba_to_rgb(const uint8_t* __restrict__ in, uint8_t* __restrict__ out, size
 }
 
 
-void rgb_to_rgba(const uint8_t* __restrict__ in, uint8_t* __restrict__ out, size_t len)
+void rgb_to_rgba(const uint8_t *__restrict__ in, uint8_t *__restrict__ out, size_t len)
 {
-	for(size_t i = 0, j = 0; i < len; i += 4, j+= 3)
+	for(size_t i = 0, j = 0; i < len; i += 4, j += 3)
 	{
 		out[i + 0] = in[j + 0];
 		out[i + 1] = in[j + 1];

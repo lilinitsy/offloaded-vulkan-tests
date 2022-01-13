@@ -103,7 +103,7 @@ void create_image(VulkanDevice device, VkImageCreateFlags flags, VkImageType ima
 	vkBindImageMemory(device.logical_device, image, image_memory, 0);
 }
 
-VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags)
+VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t layerCount = 1)
 {
 	VkImageViewCreateInfo image_view_ci			  = vki::imageViewCreateInfo();
 	image_view_ci.image							  = image;
@@ -113,7 +113,7 @@ VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, V
 	image_view_ci.subresourceRange.baseMipLevel	  = 0;
 	image_view_ci.subresourceRange.levelCount	  = 1;
 	image_view_ci.subresourceRange.baseArrayLayer = 0;
-	image_view_ci.subresourceRange.layerCount	  = 1;
+	image_view_ci.subresourceRange.layerCount	  = layerCount;
 
 	VkImageView image_view;
 	VkResult image_view_create = vkCreateImageView(device, &image_view_ci, nullptr, &image_view);
@@ -125,123 +125,101 @@ VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, V
 	return image_view;
 }
 
-VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, bool t)
+
+
+ImagePacket copy_image_to_packet(VulkanDevice device, VkCommandPool command_pool, VkImage src_image)
 {
-	VkImageViewCreateInfo image_view_ci			  = vki::imageViewCreateInfo();
-	image_view_ci.image							  = image;
-	image_view_ci.viewType						  = VK_IMAGE_VIEW_TYPE_2D;
-	image_view_ci.format						  = format;
-	image_view_ci.subresourceRange.aspectMask	  = aspectFlags;
-	image_view_ci.subresourceRange.baseMipLevel	  = 0;
-	image_view_ci.subresourceRange.levelCount	  = 1;
-	image_view_ci.subresourceRange.baseArrayLayer = 0;
-	image_view_ci.subresourceRange.layerCount	  = 1;
+	timeval timer_start;
+	timeval timer_end;
+	gettimeofday(&timer_start, nullptr);
 
-	VkImageView image_view;
-	std::cout << "image view: " << image_view << std::endl;
-	VkResult image_view_create = vkCreateImageView(device, &image_view_ci, nullptr, &image_view);
-	if(image_view_create != VK_SUCCESS)
-	{
-		throw std::runtime_error("Could not create image views");
-	}
+	COZ_BEGIN("swapchain_image_copy");
+	// Use the most recently rendered swapchain image as the source
+	VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
 
-	return image_view;
+	// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
+	ImagePacket dst;
+	VkExtent3D extent = {SERVERWIDTH, SERVERHEIGHT, 1};
+	create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
+
+	// Blit from the swapchain image to the copied image
+	// Transition dst image to destination layout
+	transition_image_layout(device, command_pool, copy_cmdbuffer,
+							dst.image,
+							0,
+							VK_ACCESS_TRANSFER_WRITE_BIT,
+							VK_IMAGE_LAYOUT_UNDEFINED,
+							VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							VK_PIPELINE_STAGE_TRANSFER_BIT,
+							VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+	// Transition swapchain image from present to source's transfer layout
+	transition_image_layout(device, command_pool, copy_cmdbuffer,
+							src_image,
+							VK_ACCESS_MEMORY_READ_BIT,
+							VK_ACCESS_TRANSFER_READ_BIT,
+							VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+							VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+							VK_PIPELINE_STAGE_TRANSFER_BIT,
+							VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+
+	// Copy the image
+	VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources isn't working
+	image_copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	image_copy_region.srcSubresource.layerCount = 1;
+	image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	image_copy_region.dstSubresource.layerCount = 1;
+	image_copy_region.extent.width				= SERVERWIDTH;
+	image_copy_region.extent.height				= SERVERHEIGHT;
+	image_copy_region.extent.depth				= 1;
+
+	vkCmdCopyImage(copy_cmdbuffer,
+				   src_image,
+				   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				   dst.image,
+				   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				   1,
+				   &image_copy_region);
+
+
+	// Transition dst image to general layout -- lets us map the image memory
+	transition_image_layout(device, command_pool, copy_cmdbuffer,
+							dst.image,
+							VK_ACCESS_TRANSFER_WRITE_BIT,
+							VK_ACCESS_MEMORY_READ_BIT,
+							VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+							VK_IMAGE_LAYOUT_GENERAL,
+							VK_PIPELINE_STAGE_TRANSFER_BIT,
+							VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+
+	// transition to swapchain image now that copying is done
+	transition_image_layout(device, command_pool, copy_cmdbuffer,
+							src_image,
+							VK_ACCESS_TRANSFER_READ_BIT,
+							VK_ACCESS_MEMORY_READ_BIT,
+							VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+							VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+							VK_PIPELINE_STAGE_TRANSFER_BIT,
+							VK_PIPELINE_STAGE_TRANSFER_BIT);
+
+	end_command_buffer(device, command_pool, copy_cmdbuffer);
+
+	VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
+	vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
+
+	dst.map_memory(device);
+
+	COZ_END("swapchain_image_copy");
+
+	gettimeofday(&timer_end, nullptr);
+
+	double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
+	//printf("dt: %f\n", (dt / 1000000.0f));
+
+	return dst;
 }
-
-
-	ImagePacket copy_image_to_packet(VulkanDevice device, VkCommandPool command_pool, VkImage src_image)
-	{
-		timeval timer_start;
-		timeval timer_end;
-		gettimeofday(&timer_start, nullptr);
-
-		COZ_BEGIN("swapchain_image_copy");
-		// Use the most recently rendered swapchain image as the source
-		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
-
-		// Create the destination image that will be copied to -- not sure this is actually gonna be necessary to stream?
-		ImagePacket dst;
-		VkExtent3D extent = {SERVERWIDTH, SERVERHEIGHT, 1};
-		create_image(device, 0, VK_IMAGE_TYPE_2D, VK_FORMAT_R8G8B8A8_SNORM, extent, 1, 1, VK_SAMPLE_COUNT_1_BIT, VK_IMAGE_TILING_LINEAR, VK_IMAGE_USAGE_TRANSFER_DST_BIT, VK_SHARING_MODE_EXCLUSIVE, VK_IMAGE_LAYOUT_UNDEFINED, VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT, dst.image, dst.memory);
-
-		// Blit from the swapchain image to the copied image
-		// Transition dst image to destination layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
-								dst.image,
-								0,
-								VK_ACCESS_TRANSFER_WRITE_BIT,
-								VK_IMAGE_LAYOUT_UNDEFINED,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		// Transition swapchain image from present to source's transfer layout
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
-								src_image,
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_ACCESS_TRANSFER_READ_BIT,
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-
-		// Copy the image
-		VkImageCopy image_copy_region				= {}; // For some reason, using the vki functions on subresources isn't working
-		image_copy_region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		image_copy_region.srcSubresource.layerCount = 1;
-		image_copy_region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		image_copy_region.dstSubresource.layerCount = 1;
-		image_copy_region.extent.width				= SERVERWIDTH;
-		image_copy_region.extent.height				= SERVERHEIGHT;
-		image_copy_region.extent.depth				= 1;
-
-		vkCmdCopyImage(copy_cmdbuffer,
-					   src_image,
-					   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					   dst.image,
-					   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					   1,
-					   &image_copy_region);
-
-
-		// Transition dst image to general layout -- lets us map the image memory
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
-								dst.image,
-								VK_ACCESS_TRANSFER_WRITE_BIT,
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-								VK_IMAGE_LAYOUT_GENERAL,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-
-		// transition to swapchain image now that copying is done
-		transition_image_layout(device, command_pool, copy_cmdbuffer,
-								src_image,
-								VK_ACCESS_TRANSFER_READ_BIT,
-								VK_ACCESS_MEMORY_READ_BIT,
-								VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-								VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-								VK_PIPELINE_STAGE_TRANSFER_BIT,
-								VK_PIPELINE_STAGE_TRANSFER_BIT);
-
-		end_command_buffer(device, command_pool, copy_cmdbuffer);
-
-		VkImageSubresource subresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0};
-		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
-
-		dst.map_memory(device);
-
-		COZ_END("swapchain_image_copy");
-
-		gettimeofday(&timer_end, nullptr);
-
-		double dt = timer_end.tv_sec - timer_start.tv_sec + (timer_end.tv_usec - timer_start.tv_usec);
-		//printf("dt: %f\n", (dt / 1000000.0f));
-
-		return dst;
-	}
 
 
 

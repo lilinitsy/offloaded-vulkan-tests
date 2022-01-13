@@ -30,7 +30,7 @@ struct VulkanDevice
 	VulkanDevice(VkInstance instance, VkSurfaceKHR surface)
 	{
 		multiview_features = {
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
+			.sType	   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MULTIVIEW_FEATURES,
 			.multiview = VK_TRUE,
 		};
 
@@ -84,13 +84,13 @@ struct VulkanDevice
 		device_features.samplerAnisotropy		 = VK_TRUE;
 
 		VkPhysicalDeviceFeatures2KHR device_features_2 = {
-			.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
-			.pNext = &multiview_features,
+			.sType	  = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+			.pNext	  = &multiview_features,
 			.features = device_features,
 		};
 
 
-		VkDeviceCreateInfo logical_device_ci	 = vki::deviceCreateInfo(device_queue_ci.size(), &device_features_2, device_queue_ci.data(), required_validation_layers.size(), required_validation_layers.data(), required_device_extensions.size(), required_device_extensions.data(), nullptr);
+		VkDeviceCreateInfo logical_device_ci = vki::deviceCreateInfo(device_queue_ci.size(), &device_features_2, device_queue_ci.data(), required_validation_layers.size(), required_validation_layers.data(), required_device_extensions.size(), required_device_extensions.data(), nullptr);
 
 		if(vkCreateDevice(physical_device, &logical_device_ci, nullptr, &logical_device) != VK_SUCCESS)
 		{
