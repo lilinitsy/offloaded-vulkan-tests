@@ -29,8 +29,6 @@
 
 #include <vulkan/vulkan.h>
 
-#include <coz.h>
-
 #include "camera.h"
 #include "defines.h"
 #include "utils.h"
@@ -1029,8 +1027,6 @@ struct DeviceRenderer
 
 	static void *execute_first_renderpass(void *renderpassargs)
 	{
-		COZ_BEGIN("execute_first_renderpass");
-
 		FirstRenderPassArgs *args = (FirstRenderPassArgs *) renderpassargs;
 
 		// First pass: The offscreen rendering
@@ -1060,8 +1056,6 @@ struct DeviceRenderer
 
 			vkCmdEndRenderPass(args->cmdbuf);
 		}
-
-		COZ_END("execute_first_renderpass");
 
 		return nullptr;
 	}
@@ -1156,7 +1150,6 @@ struct DeviceRenderer
 									VK_PIPELINE_STAGE_TRANSFER_BIT);		  // pipeline flags
 
 
-			COZ_BEGIN("fsquad_renderpass")
 			// Second renderpass: Fullscreen quad draw
 			{
 				VkClearValue clear_values[2];
@@ -1176,7 +1169,6 @@ struct DeviceRenderer
 				vkCmdDraw(command_buffers[i], 3, 1, 0, 0);
 				vkCmdEndRenderPass(command_buffers[i]);
 			}
-			COZ_END("fsquad_renderpass");
 
 
 			if(vkEndCommandBuffer(command_buffers[i]) != VK_SUCCESS)
@@ -1295,7 +1287,6 @@ struct DeviceRenderer
 
 	static void *receive_swapchain_image(void *devicerenderer)
 	{
-		COZ_BEGIN("network_receive");
 		DeviceRenderer *dr = (DeviceRenderer *) devicerenderer;
 
 		VkDeviceSize memcpy_offset = 0;
@@ -1324,9 +1315,7 @@ struct DeviceRenderer
 		}
 
 		vkUnmapMemory(dr->device.logical_device, dr->image_buffer_memory);
-		COZ_END("network_receive");
 
-		COZ_BEGIN("copy_network_image");
 		// Now the VkBuffer should be filled with memory that we can copy to a swapchain image.
 		// Transition swapchain image to copyable layout
 
@@ -1379,8 +1368,6 @@ struct DeviceRenderer
 
 		end_command_buffer(dr->device, dr->command_pool, copy_cmdbuf);
 		*/
-		
-		COZ_END("copy_network_image");
 
 		return nullptr;
 	}

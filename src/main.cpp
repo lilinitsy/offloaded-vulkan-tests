@@ -25,8 +25,6 @@
 
 #include <vulkan/vulkan.h>
 
-#include <coz.h>
-
 #include "camera.h"
 #include "defines.h"
 #include "utils.h"
@@ -735,11 +733,7 @@ struct HostRenderer
 			 << SERVERHEIGHT << "\n"
 			 << 255 << "\n";*/
 
-		COZ_BEGIN("network_send");
-
 		send_image_to_client(image_packet);
-
-		COZ_END("network_send");
 
 		printf("framenum server: %lu\n", numframes);
 		numframes++;

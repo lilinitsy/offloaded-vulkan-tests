@@ -3,7 +3,7 @@
 pkgs.stdenv.mkDerivation {
   name = "offloaded-vulkan-tests";
   src = pkgs.nix-gitignore.gitignoreSourcePure [ ./.gitignore "*.spv" ] ./.;
-  buildInputs = with pkgs; [ coz glfw glm pkg-config shaderc vulkan-loader ];
+  buildInputs = with pkgs; [ glfw glm pkg-config shaderc vulkan-loader ];
   buildPhase = ''
     pushd src
     make -f Makefile_nix

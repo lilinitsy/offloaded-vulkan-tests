@@ -155,7 +155,6 @@ VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, V
 		timeval timer_end;
 		gettimeofday(&timer_start, nullptr);
 
-		COZ_BEGIN("swapchain_image_copy");
 		// Use the most recently rendered swapchain image as the source
 		VkCommandBuffer copy_cmdbuffer = begin_command_buffer(device, command_pool);
 
@@ -232,8 +231,6 @@ VkImageView create_image_view(VkDevice device, VkImage image, VkFormat format, V
 		vkGetImageSubresourceLayout(device.logical_device, dst.image, &subresource, &dst.subresource_layout);
 
 		dst.map_memory(device);
-
-		COZ_END("swapchain_image_copy");
 
 		gettimeofday(&timer_end, nullptr);
 
